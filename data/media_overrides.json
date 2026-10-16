@@ -1,0 +1,5 @@
+{
+  "schema": 1,
+  "entries": [],
+  "instructions": "Add an entry per card_id/player-year-team or team-year. Fields: key, kind (portrait/logo), year, team, source_url, file, rights_holder, permission (granted/open-license), permission_evidence, verified, uniform_year_verified, checked_at. Only approved local assets under web/assets/approved are displayed. Never infer image permission from CSV access."
+}

@@ -1,0 +1,179 @@
+# Nexus Archive
+
+실제 LoL 프로 경기 출전 기록으로 드림팀을 만드는 **싱글플레이 로그라이크 웹 게임 MVP**입니다.
+경기·영입·시즌·세이브 규칙은 Python에 있으며, 브라우저의 Pyodide Web Worker에서 실행됩니다.
+JavaScript는 화면, 파일 입출력, 로컬 저장, Python 연결만 담당합니다. 배포물은 정적 파일입니다.
+
+## 바로 실행 (Windows)
+
+Python 3.11 이상이면 추가 패키지 설치 없이 실행할 수 있습니다.
+
+폴더 안의 **`START_GAME.bat`을 더블클릭**해 실행할 수 있습니다. 또는 아래 명령을 사용하세요.
+
+```powershell
+cd D:\personal_learning\python.web.test
+python scripts/serve.py
+```
+
+브라우저에서 **http://127.0.0.1:8000**을 여세요. 다른 프로그램이 해당 포트를 쓰면 `--port 8080`을 붙입니다.
+서버를 종료하려면 실행 창에서 `Ctrl+C`를 누르세요. 이는 개발용 정적 파일 서버이며 게임 백엔드가 아닙니다.
+
+`web/index.html`을 더블클릭하는 `file://` 실행은 모듈·fetch·Worker 제약 때문에 지원하지 않습니다.
+첫 실행에는 Pyodide 0.27.7을 jsDelivr에서 내려받으므로 인터넷 연결이 필요합니다. 챔피언 이미지는 Riot CDN, 글꼴은 Google Fonts를 사용합니다. 글꼴/이미지 요청이 실패하면 시스템 글꼴/대체 이미지로 계속 진행합니다. Pyodide 다운로드 자체가 차단되면 오류를 표시합니다. 완전한 오프라인 설치는 이번 MVP 범위에 포함하지 않았습니다.
+
+## 플레이 순서
+
+1. 무료 스타터 카드 5장과 600 CR로 시작합니다.
+2. **구단 본부**에서 포지션별 챔피언을 선택합니다. 공식 출전 경험이 있는 챔피언에는 추정 숙련도가 적용되고, 미출전 챔피언은 35로 시작합니다.
+3. **선수 영입**: 전체 150 CR, 포지션 지정 200 CR. 해당 풀의 모든 카드가 동일 확률입니다. 중복은 90 CR 환급입니다. 유료 결제·현금 전환·실물 보상은 없습니다.
+4. **컬렉션**에서 보유 카드를 편성합니다. 모든 연도 혼합이 가능하며, 카드의 실제 출전 포지션에 들어갑니다. 같은 선수를 다른 연도/포지션 카드로 중복 출전시키는 것은 금지합니다.
+5. **경기 시작** 후 자동 진행을 관전합니다. 1×/3×/6×, 일시정지, 한 턴 진행을 지원합니다. 경기 중에는 로스터·챔피언·영입이 잠깁니다.
+6. 이벤트가 발생하면 자동 진행이 멈춥니다. 2~4개 선택지 중 클릭하거나 숫자 1~4를 누릅니다. 확률은 해당 시점의 팀 전력·골드 차·시야·챔피언 숙련·사용 가능한 스킬 태그를 반영합니다.
+7. 6개 구단 단일 라운드로빈 5경기 후 상위 4팀이 진출합니다. 준결승과 결승은 3전 2선승제이며, AI끼리도 같은 Python 경기 엔진을 사용합니다. 정규시즌 동률은 고정 구단 번호순입니다.
+8. 경기 승리 240 CR / 패배 140 CR, 플레이오프 진출 200 CR / 결승 진출 300 CR / 우승 600 CR. 시즌 후 컬렉션·재화는 유지됩니다.
+
+## 이번 버전의 실제 데이터 범위
+
+- **2023·2024년, 19개 리그, 선수 카드 3,835장, 출전 행 121,921건**.
+- 선수 × 연도 × 소속 팀 × 출전 포지션 단위 카드입니다. 이적 전후 구단은 별도 카드입니다.
+- Oracle's Elixir `playerid`, `gameid`, `teamid`, `position`, 양수 `gamelength`, 유효한 `result`가 있는 실제 출전 행만 사용합니다. 명단만 있는 후보 선수·코치·팀 집계 행은 생성하지 않습니다.
+- 1/2군 구분은 **대회 단계** 기준입니다. 2군은 1군 산하 아카데미뿐 아니라 해당 2부 리그 독립 구단도 포함합니다. 리그 허용 목록은 `data/league_tiers.json`에서 연도와 함께 관리합니다. 미확인 리그, 아마추어 대회, 혼합 컵 대회는 제외합니다.
+- 포함 리그: LCK, LCKC, LPL, LDL, LEC, LCS, NACL, PCS, VCS, LJL, CBLOL, CBLOLA, LLA, LCO, LFL, PRM, LVP SL, TCL, NLC.
+- 모든 연도·모든 지역의 완전한 수록을 주장하지 않습니다. 2014~2022 및 2025 이후는 원본과 리그 분류를 추가하여 확장할 수 있습니다.
+- 공식 다운로드 페이지는 작업 시 403, 공개 Drive는 할당량 초과 HTML을 반환했습니다. 접근 제한을 우회하지 않았습니다. 초기 데이터는 별도 공개된 2023/2024 CSV 보존본에서 추출했습니다. 보존본의 출전 행과 카드는 교차 검증했지만 **원본과 보존본의 완전 일치, 재배포 이용권한은 미검증**입니다.
+- 각 원본 파일 SHA-256, 공개 보존본 URL, 제외된 리그별 행 수는 `data/seed/provenance.json` 및 화면의 **데이터 & 출처**에 남깁니다. 카드마다 최초/최종 경기 ID·날짜를 확인할 수 있습니다.
+
+### 능력치와 숙련도
+
+연도·포지션별 분포에서 라인전(`golddiffat15`), 전투(`dpm` + KDA 보정), 시야(`vspm`), 성장(`cspm`) 백분위를 구한 뒤 출전 수가 적으면 평균 70 쪽으로 축소합니다. 누락 지표는 0으로 대체하므로 특히 지표가 누락된 리그의 점수에는 한계가 있습니다. OVR은 네 능력치 평균입니다. 지역 간 대회 난도 보정이나 실제 선수의 잠재력 평가는 아닙니다.
+
+챔피언 숙련도는 카드별 출전 횟수와 스무딩한 승률의 함수입니다. Riot 계정 숙련도와 관계없습니다. 모든 선수 연도에 공통 경기 규칙/현재 고정 챔피언 스냅샷을 사용합니다. 해당 연도의 실제 게임 패치를 재현하지 않습니다.
+
+## Python 엔진 구조
+
+```text
+web/
+  engine.py          # 순수 Python RNG·경기·이벤트·영입·시즌·세이브 검증
+  worker.js          # Pyodide 모듈 Worker / 순차 JSON 요청 처리
+  app.js             # 표시, 입력, 로컬 저장, 파일 import/export
+  index.html / style.css
+  data/
+    cards.json       # 배치 생성한 실제 출전 기반 카드
+    champions.json   # ko_KR 173종 / 패시브·QWER 865개 이름·아이콘 URL
+    media.json       # 연도별 프로필/팀 로고 권한·검증 레지스트리
+  assets/            # 직접 만든 대체 이미지, 승인된 이미지 디렉터리
+data/
+  seed/              # 재생성 가능한 압축 출전 CSV + 출처
+  sources.json       # 공개 다운로드 URL, 출처·권한 상태
+  league_tiers.json  # 허용 연도/리그/대회 단계
+  media_overrides.json
+scripts/
+  build_data.py / sync_ddragon.py / fetch_sources.py
+  build_site.py / serve.py
+tests/               # stdlib unittest
+.github/workflows/   # 테스트·Pages 배포, 공개 데이터 갱신
+```
+
+### 경기 모델
+
+- 24~38초 간격의 시드 기반 턴. 성장 골드, 라인전/갱킹/한타, 골드 차, 킬, 라인 압박, 시야, 사기, 오브젝트, 스킬 사용 대기시간을 갱신합니다.
+- 드래곤 5분 최초 등장 / 확보 후 5분, 전령 8~20분 한 번, 바론 20분 최초 등장 / 확보 후 6분, 바론 공성 버프 3분. MVP 공통 규칙입니다.
+- 라인별 포탑 3개 → 억제기 → 넥서스. 넥서스 HP가 0일 때만 승패가 결정됩니다. 타이머 승자나 시작 시 미리 정한 결과는 없습니다. 경기 후반 공성 피해가 커져 교착을 줄입니다.
+- 전투 확률은 카드 OVR·숙련·골드·사기·드래곤·시야에 영향을 받습니다. 군중제어/광역 태그는 전투와 공성에, 이벤트에서는 이동/보호/처형 등 상황에 맞는 스킬 태그가 성공률에 기여합니다.
+- 로그는 실제 선택된 챔피언과 스킬의 한국어 이름을 사용합니다. 일반 라인전·갱킹·오브젝트·한타와 선택 결과를 기록합니다.
+- 돌격 선택은 역갱, 시야 확보 성공은 후속 포착 이벤트로 이어집니다. 현재 선택은 향후 골드·시야·사기·압박·오브젝트 및 다음 이벤트를 바꿉니다. 선택 도중 시계·RNG가 멈춥니다.
+- 아이템, 실제 위치 경로 탐색, 데스 타이머, 억제기 재생, 드래곤 영혼/장로, 실제 패치별 밸런스, 완전한 밴픽·피어리스는 후속 확장 영역입니다.
+
+## 저장 / 재현
+
+저장 키는 호스트뿐 아니라 프로젝트 URL 경로별로 구분합니다. 별도 계정·분석 추적·서버 전송은 없습니다. 브라우저 저장이 차단되거나 용량이 부족하면 경고하고 JSON 내보내기를 안내합니다.
+
+세이브에는 시드, 명령 기록, 엔진·카드·챔피언 버전, SHA-256 체크섬이 들어갑니다. 가져오기 시 최대 4MB/12,000개 명령을 검증하고 **새 엔진에서 정상 재생에 성공한 후에만 현재 게임을 교체**합니다. 실행 가능한 pickle/eval 코드는 사용하지 않습니다. 체크섬은 손상 감지용이며 치트 방지 서명은 아닙니다.
+
+동일 엔진·데이터 버전 + 동일 시드 + 동일 행동이면 정확히 재현됩니다. UI 속도는 렌더 간 Python 턴 수만 바꾸며 이벤트를 건너뛰지 않습니다. 외부 데이터 갱신 후 이전 세이브는 거절하며 원래 파일을 유지합니다. 저장 당시 릴리스로 돌아가 불러오세요. 자동 마이그레이션은 아직 없습니다. 업데이트 전에 세이브와 해당 게임 릴리스를 함께 보관하세요.
+
+## 데이터 재생성 / 갱신
+
+번들 출전 추출본만으로 JSON을 재생성할 수 있습니다. Python 표준 라이브러리만 사용합니다.
+
+```powershell
+python scripts/build_data.py
+python scripts/sync_ddragon.py --version 16.20.1
+python -m unittest discover -s tests -v
+python scripts/build_site.py
+```
+
+원본을 합법적으로 다운로드해 `data/raw/2023.csv`, `data/raw/2024.csv` 등에 넣었다면:
+
+```powershell
+python scripts/build_data.py --raw-dir data/raw
+```
+
+다른 연도는 먼저 `data/sources.json`과 연도별 리그 분류를 검토하세요. 현재 `years` 밖의 행은 제외됩니다. 서로 다른 연도 파일을 받아도 행의 `year`를 기준으로 카드가 생성됩니다. 데이터 생성은 `gameid + playerid + position` 중복을 제거합니다. 압축 seed에는 원래 필드값을 유지합니다.
+
+자동 다운로드는 `python scripts/fetch_sources.py`입니다. HTTPS 공개 제공자 호스트만 허용하고, 리다이렉트도 검증합니다. HTML·로그인·CAPTCHA·할당량 초과·스키마 변경·과도한 파일 크기는 실패 처리합니다. **자동으로 다른 미러를 찾아가거나 권한·할당량 제한을 우회하지 않습니다.** 실패 시 기존 seed/생성 JSON은 유지합니다. Data Dragon은 `--allow-stale`로 기존 전체 스냅샷을 유지할 수 있습니다. 부분 다운로드로 파일을 교체하지 않습니다.
+
+## 사진·로고와 공개 배포 권한
+
+**CSV를 공개 열람할 수 있다는 사실은 사진·로고·선수 초상·Riot IP의 사용 권한을 뜻하지 않습니다.**
+
+- 현재 선수 사진과 팀 로고는 직접 작성한 SVG 대체 이미지입니다. 그해 공식 유니폼 프로필을 확보했다고 표시하지 않습니다.
+- `data/media_overrides.json`에 카드/팀연도 키, 출처 URL, 권리자, 권한(명시 허락 또는 공개 라이선스), 허락 근거, 검증 날짜, 팀/연도 일치 여부를 관리합니다.
+- 이미지 파일은 `web/assets/approved/`에 넣습니다. 검증·권한·연도·팀을 모두 통과한 로컬 파일만 JSON의 표시 경로로 채택합니다. 선수 사진은 해당 연도 유니폼 검증도 필요합니다.
+- Data Dragon에는 API 키가 필요하지 않지만 Riot 정책은 적용됩니다. [Riot 개발자 정책](https://developer.riotgames.com/docs/lol#developer-api-policy)은 Riot IP를 사용하는 게임 제작 제한을 명시합니다. 이 프로젝트의 공개 게임 이용에 대한 허락이 확보됐다고 주장하지 않습니다. 공개 배포 전 Riot과 데이터/이미지 권리자의 허용 범위를 확인하거나 허용되는 자체 자산·데이터로 전환해야 합니다.
+- 바닥글의 비공식 고지나 무료 운영만으로 게임 이용권한이 성립하지 않습니다.
+- 이 저장소의 MIT 라이선스는 직접 작성한 프로그램/SVG에만 적용됩니다. Oracle's Elixir 데이터, 선수/팀 이름 및 초상, Riot 콘텐츠의 재라이선스가 아닙니다.
+
+## GitHub Pages 배포 설정
+
+저장소: [carp-blm/web_lol](https://github.com/carp-blm/web_lol). 기본 브랜치는 `main`입니다.
+
+GitHub Actions가 소스 검증과 미리보기 빌드를 수행합니다. 공개 게임 이용권한이 확보됐다는 뜻은 아니며, Pages 공개 배포는 `PUBLIC_RELEASE_APPROVED` 스위치로 별도 관리합니다. 배포 활성화 후 주소는 `https://carp-blm.github.io/web_lol/`입니다.
+
+1. 검토한 변경을 이 저장소의 `main` 브랜치에 푸시합니다. `data/raw/`, 캐시, 키/토큰은 올리지 않습니다. `data/seed/`와 `web/data/`의 배포 권한도 함께 확인합니다.
+2. 저장소 **Settings → Pages → Source: GitHub Actions**를 선택합니다.
+3. 공개 게임/데이터/이미지 사용 권한 검토를 마친 뒤 저장소 변수 `PUBLIC_RELEASE_APPROVED=true`를 설정합니다. 이는 허락을 자동 발급하는 기능이 아니라 운영자가 확인하는 배포 스위치입니다.
+4. **Test and deploy GitHub Pages** 워크플로를 실행하거나 `main`에 푸시합니다. 카드 재생성 → Python 테스트 → 정적 패키징 → Pages 업로드 → 배포 순서입니다. 스위치가 없으면 검증과 다운로드 가능한 미리보기 아티팩트만 생성합니다.
+5. 배포 주소는 `https://<owner>.github.io/<repository>/`입니다. 모든 로컬 파일 경로는 상대 경로라 프로젝트 하위 경로에서도 작동합니다. 백엔드·DB·GitHub Actions에서 실행 중인 경기 서버가 필요하지 않습니다.
+
+### 자동 데이터 갱신
+
+`refresh-data.yml`은 매주 월요일 02:23 UTC(한국 11:23) 또는 수동으로 실행합니다.
+
+- 제공자 접근 및 후속 사용 권한을 검토한 뒤 `DATA_REFRESH_ENABLED=true`를 설정합니다.
+- 기본 결과는 테스트를 통과한 `refreshed-data-review` 아티팩트입니다. 데이터를 자동으로 운영에 덮어쓰지 않습니다.
+- 자동 갱신 PR을 원하면 `DATA_AUTO_PR=true`와 해당 저장소의 contents/pull requests 쓰기 권한으로 제한한 `DATA_REFRESH_TOKEN` secret을 설정합니다. 외부 토큰은 코드/브라우저에 포함하지 않습니다. 토큰이 생성한 PR은 표준 CI가 실행됩니다. 머지되면 Pages 워크플로가 실행됩니다.
+- 다운로드 실패는 기존 스냅샷 유지 + 워크플로 경고입니다. 원본이 실패한 실행은 자동 PR을 열지 않습니다. Data Dragon 실패 역시 기존 스냅샷을 유지합니다.
+- 데이터 변경은 세이브 버전을 바꾸므로 갱신 PR에서 버전 영향도 검토하세요.
+
+## 테스트
+
+```powershell
+python -m unittest discover -s tests -v
+node --check web/app.js
+node --check web/worker.js
+python scripts/build_site.py
+```
+
+Node는 JS 문법 검사에만 선택적으로 필요합니다. 게임 실행과 Python 테스트에는 필요 없습니다.
+테스트는 실제 출전 근거, 필터, 확률/스탯 범위, 권한 없는 미디어 폴백, HTML 다운로드 차단, 시드 결정성, 이벤트 중단, 후속 분기, 스킬 쿨다운, 오브젝트 리스폰, 넥서스 승리, 중복 보상 방지, 시즌 전체, 세이브 손상/버전/원자적 복원을 검사합니다. 100개 시드로 경기 완주와 상태 불변조건도 검증합니다.
+
+실행 결과와 브라우저 검증 범위는 `docs/VALIDATION.md`를 참고하세요.
+
+## 다음 확장 지점
+
+- `Match.make_event / choose`: 이벤트 정의를 데이터 파일로 분리, 연속 이벤트/전술 유물/시즌 부상 등 추가.
+- `Match.step / push`: 세부 라인 운영, 쿨다운·역할별 시너지, 아이템/부활 등 모델 정교화.
+- `build_data.py`: 결측치 처리 개선, 연도별 대회 메타데이터 검증, 지역/리그 난도 보정과 통계 설명.
+- `media_overrides.json`: 권한과 연도가 검증된 공식 유니폼/팀 로고만 점진 적용.
+- `Game.import_save`: 엔진/데이터 버전별 명시적 마이그레이션과 릴리스 아카이브.
+
+## 참고
+
+- [Oracle's Elixir](https://oracleselixir.com/tools/downloads)
+- [2023 CSV 공개 보존본](https://github.com/Ashalo/LOLAnalysis)
+- [2024 CSV 공개 보존본](https://github.com/JianyunYe/League-of-Legends-data-analysis)
+- [Riot Data Dragon](https://developer.riotgames.com/docs/lol#data-dragon)
+- [Riot IP 정책](https://www.riotgames.com/en/legal)
+- [Pyodide Web Worker](https://pyodide.org/en/stable/usage/webworker.html)
+- [GitHub Pages 사용자 워크플로](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)

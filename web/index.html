@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d1318">
+  <meta name="description" content="실제 프로 선수 기록으로 만드는 나만의 팀. 싱글플레이 전술 로그라이크 Nexus Archive.">
+  <title>NEXUS ARCHIVE · 나만의 드림팀</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/mark.svg">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="./" aria-label="Nexus Archive 홈"><img src="./assets/mark.svg" alt=""><span>NEXUS<br><b>ARCHIVE</b></span></a>
+    <div class="sidebar-label">MANAGER'S DESK</div>
+    <nav aria-label="주 메뉴">
+      <button class="nav active" data-tab="home"><span>◈</span> 구단 본부 <small>01</small></button>
+      <button class="nav" data-tab="arena"><span>⌁</span> 경기 관전 <small>02</small></button>
+      <button class="nav" data-tab="collection"><span>▧</span> 선수 컬렉션 <small>03</small></button>
+      <button class="nav" data-tab="season"><span>⚑</span> 시즌 기록 <small>04</small></button>
+      <button class="nav" data-tab="sources"><span>◎</span> 데이터 & 출처 <small>05</small></button>
+    </nav>
+    <div class="sidebar-bottom"><span class="status-dot"></span> SINGLE PLAYER<br><small>다른 시대. 같은 승리의 꿈.</small><div class="version">LOCAL SAVE · MVP 0.1</div></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div><span class="muted">YOUR CLUB</span><strong>NEXUS CLUB <span class="tiny-badge">감독</span></strong></div>
+      <div class="top-actions"><span class="credits"><span>✧</span> <b id="coins">600</b> <small>CR</small></span><button id="export" class="ghost" disabled>세이브 내보내기 ↗</button><button id="import" class="icon-button" title="세이브 불러오기" aria-label="세이브 불러오기" disabled>↥</button><input id="save-file" type="file" accept=".json,application/json" hidden></div></header>
+    <main id="main">
+      <div id="loading" class="loading"><span class="eyebrow">NEXUS ARCHIVE</span><h1>감독님의 자리를<br>준비하고 있습니다.</h1><div class="loading-track"><i></i></div><p id="load-status">실제 출전 기록과 Python 경기 엔진을 불러오는 중…</p><small>첫 실행에는 네트워크 상태에 따라 시간이 걸립니다.</small></div>
+      <section id="home" class="view" hidden></section>
+      <section id="arena" class="view" hidden></section>
+      <section id="collection" class="view" hidden></section>
+      <section id="season" class="view" hidden></section>
+      <section id="sources" class="view" hidden></section>
+    </main>
+    <footer>비공식 팬 프로토타입 · 경기 능력치는 게임용 추정치입니다.<br><span>Nexus Archive is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games and all associated properties are trademarks or registered trademarks of Riot Games, Inc.</span></footer>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="new-dialog"><form method="dialog"><span class="eyebrow">NEW ARCHIVE</span><h2>새 기록을 시작합니다</h2><p>현재 진행은 새 게임으로 바뀝니다.<br>보관할 기록은 먼저 내보내 주세요.</p><label>재현 시드<input id="seed-input" value="NEXUS-2026" maxlength="80" required></label><div class="dialog-actions"><button value="cancel" class="ghost">돌아가기</button><button id="confirm-new" value="default" class="primary">새 게임 시작</button></div></form></dialog>
+<script type="module" src="./app.js"></script>
+</body>
+</html>

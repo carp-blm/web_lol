@@ -1,0 +1,21 @@
+{
+  "attribution": "Match statistics: Oracle's Elixir / Tim Sevenhuysen",
+  "upstream": "https://oracleselixir.com/tools/downloads",
+  "public_folder": "https://drive.google.com/drive/folders/1gLSw0RLjBbtaNy0dgnGQDAZOHIgCe-HH",
+  "permission_status": "unverified-redistribution",
+  "notes": "Official download page returned 403; public Drive files returned quota-exceeded HTML on 2026-10-16. Initial snapshot uses openly published CSV preservation copies. Original-to-mirror equality cannot be verified. No access-control or quota bypass is implemented.",
+  "years": {
+    "2023": {
+      "url": "https://drive.google.com/uc?export=download&id=1XXk2LO0CsNADBB1LRGOV5rUpyZdEZ8s2",
+      "snapshot_url": "https://raw.githubusercontent.com/Ashalo/LOLAnalysis/main/2023_LoL_esports_match_data_from_OraclesElixir.csv",
+      "source_kind": "public-mirror",
+      "automatic_fetch": true
+    },
+    "2024": {
+      "url": "https://drive.google.com/uc?export=download&id=1IjIEhLc9n8eLKeY-yh_YigKVWbhgGBsN",
+      "snapshot_url": "https://raw.githubusercontent.com/JianyunYe/League-of-Legends-data-analysis/main/2024_LoL_esports_match_data_from_OraclesElixir.csv",
+      "source_kind": "public-mirror",
+      "automatic_fetch": true
+    }
+  }
+}

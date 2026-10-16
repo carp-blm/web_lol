@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "years": [2023, 2024],
+  "policy": "Competition-tier allowlist for this MVP; not an assertion of employment or academy affiliation. Unknown, amateur, exhibition and mixed-tier cups are excluded. Extend per year after review.",
+  "leagues": {
+    "LCK": {"tier": 1, "region": "KR"},
+    "LCKC": {"tier": 2, "region": "KR"},
+    "LPL": {"tier": 1, "region": "CN"},
+    "LDL": {"tier": 2, "region": "CN"},
+    "LEC": {"tier": 1, "region": "EMEA"},
+    "LCS": {"tier": 1, "region": "NA"},
+    "NACL": {"tier": 2, "region": "NA"},
+    "LCSA": {"tier": 2, "region": "NA"},
+    "PCS": {"tier": 1, "region": "APAC"},
+    "VCS": {"tier": 1, "region": "VN"},
+    "LJL": {"tier": 1, "region": "JP"},
+    "CBLOL": {"tier": 1, "region": "BR"},
+    "CBLOLA": {"tier": 2, "region": "BR"},
+    "LLA": {"tier": 1, "region": "LATAM"},
+    "LCO": {"tier": 1, "region": "OCE"},
+    "LFL": {"tier": 2, "region": "EMEA"},
+    "PRM": {"tier": 2, "region": "EMEA"},
+    "LVP SL": {"tier": 2, "region": "EMEA"},
+    "TCL": {"tier": 2, "region": "EMEA"},
+    "NLC": {"tier": 2, "region": "EMEA"}
+  },
+  "sources": ["https://lolesports.com/", "https://oracleselixir.com/tools/downloads"],
+  "review_note": "MVP competition classification, 2023–2024 only. Regional tier 2 includes independent teams. No roster-only or unplayed substitute cards."
+}

@@ -1,0 +1,58 @@
+name: Refresh public data
+on:
+  schedule:
+    - cron: '23 2 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+jobs:
+  refresh:
+    # Enable only after reviewing provider access and downstream use permissions.
+    if: vars.DATA_REFRESH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Download public yearly files (no quota or login bypass)
+        id: fetch
+        continue-on-error: true
+        run: python scripts/fetch_sources.py
+      - name: Rebuild from refreshed data
+        if: steps.fetch.outcome == 'success'
+        run: python scripts/build_data.py --raw-dir data/raw
+      - name: Preserve existing snapshot on provider failure
+        if: steps.fetch.outcome != 'success'
+        run: echo "::warning::Provider unavailable. Last good cards remain unchanged."
+      - name: Refresh Data Dragon with last-good fallback
+        run: python scripts/sync_ddragon.py --allow-stale
+      - name: Validate
+        run: python -m unittest discover -s tests -v
+      - name: Package candidate
+        run: python scripts/build_site.py
+      - name: Upload reviewable refresh bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: refreshed-data-review
+          path: |
+            web/data
+            data/seed
+            data/sources.json
+            dist
+      - name: Open an update pull request
+        if: vars.DATA_AUTO_PR == 'true' && steps.fetch.outcome == 'success'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.DATA_REFRESH_TOKEN }}
+          commit-message: 'Refresh validated public data snapshots'
+          title: 'Refresh Oracle’s Elixir and Data Dragon snapshots'
+          body: 'Validated public data update. Inspect provenance, coverage, rights and save-version impact before merging. Existing saves require the prior data snapshot.'
+          branch: automation/data-refresh
+          add-paths: |
+            web/data
+            data/seed
+            data/sources.json

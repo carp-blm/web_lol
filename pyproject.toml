@@ -1,0 +1,9 @@
+[project]
+name = "nexus-archive"
+version = "0.1.0"
+description = "Python + Pyodide single-player esports roguelike"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.ruff]
+line-length = 100

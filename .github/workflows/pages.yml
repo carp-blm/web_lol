@@ -19,10 +19,16 @@ jobs:
           python-version: '3.13'
       - name: Regenerate cards from preserved real appearances
         run: python scripts/build_data.py
+      - name: Validate pinned champion details and regenerate ability families
+        run: python scripts/build_champions.py
       - name: Test Python simulation, saves, season and data safeguards
         run: python -m unittest discover -s tests -v
       - name: Build static site
         run: python scripts/build_site.py
+      - name: Check browser JavaScript syntax
+        run: |
+          node --check web/app.js
+          node --check web/worker.js
       - name: Store local preview artifact
         uses: actions/upload-artifact@v4
         with:

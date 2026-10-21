@@ -42,6 +42,7 @@ jobs:
             web/data
             data/seed
             data/sources.json
+            data/champion_details.json.gz
             dist
       - name: Open an update pull request
         if: vars.DATA_AUTO_PR == 'true' && steps.fetch.outcome == 'success'
@@ -56,3 +57,4 @@ jobs:
             web/data
             data/seed
             data/sources.json
+            data/champion_details.json.gz

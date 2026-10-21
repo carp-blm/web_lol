@@ -7,7 +7,7 @@
   <meta name="description" content="실제 프로 선수 기록으로 만드는 나만의 팀. 싱글플레이 전술 로그라이크 Nexus Archive.">
   <title>NEXUS ARCHIVE · 나만의 드림팀</title>
   <link rel="icon" type="image/svg+xml" href="./assets/mark.svg">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=0.2.0">
 </head>
 <body>
 <div class="shell">
@@ -21,7 +21,7 @@
       <button class="nav" data-tab="season"><span>⚑</span> 시즌 기록 <small>04</small></button>
       <button class="nav" data-tab="sources"><span>◎</span> 데이터 & 출처 <small>05</small></button>
     </nav>
-    <div class="sidebar-bottom"><span class="status-dot"></span> SINGLE PLAYER<br><small>다른 시대. 같은 승리의 꿈.</small><div class="version">LOCAL SAVE · MVP 0.1</div></div>
+    <div class="sidebar-bottom"><span class="status-dot"></span> SINGLE PLAYER<br><small>다른 시대. 같은 승리의 꿈.</small><div class="version">LOCAL SAVE · MVP 0.2</div></div>
   </aside>
   <div class="workspace">
     <header class="topbar"><div><span class="muted">YOUR CLUB</span><strong>NEXUS CLUB <span class="tiny-badge">감독</span></strong></div>
@@ -38,7 +38,8 @@
   </div>
 </div>
 <div id="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="ability-dialog" class="ability-dialog" aria-label="형태별 스킬"><form method="dialog"><button class="ghost dialog-close" aria-label="스킬 설명 닫기">닫기 ×</button></form><div id="ability-content"></div></dialog>
 <dialog id="new-dialog"><form method="dialog"><span class="eyebrow">NEW ARCHIVE</span><h2>새 기록을 시작합니다</h2><p>현재 진행은 새 게임으로 바뀝니다.<br>보관할 기록은 먼저 내보내 주세요.</p><label>재현 시드<input id="seed-input" value="NEXUS-2026" maxlength="80" required></label><div class="dialog-actions"><button value="cancel" class="ghost">돌아가기</button><button id="confirm-new" value="default" class="primary">새 게임 시작</button></div></form></dialog>
-<script type="module" src="./app.js"></script>
+<script type="module" src="./app.js?v=0.2.0"></script>
 </body>
 </html>

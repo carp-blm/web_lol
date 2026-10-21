@@ -7,8 +7,9 @@ import copy
 import hashlib
 import json
 import re
+from abilities import AbilityRules
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "2.0.0"
 ROLES = ("top", "jng", "mid", "bot", "sup")
 LANES = ("top", "mid", "bot")
 ROLE_NAMES = {"top": "탑", "jng": "정글", "mid": "미드", "bot": "바텀", "sup": "서포터"}
@@ -48,7 +49,7 @@ def normalize(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-class Match:
+class Match(AbilityRules):
     def __init__(self, blue, red, seed, champions):
         self.rng = RNG(seed)
         self.champions = champions
@@ -62,6 +63,7 @@ class Match:
                   "buff_until": [0, 0], "next_dragon": 300, "next_baron": 1200,
                   "herald_available": True, "event": None, "next_event": 150,
                   "followup": None, "log": [], "decisions": [], "claimed": False}
+        self.initialize_abilities()
         self.log("system", "경기 시작. 모든 연도 카드에 동일한 경기 규칙이 적용됩니다.")
 
     def log(self, kind, text, side=None, skill=None):
@@ -71,20 +73,6 @@ class Match:
 
     def unit(self, side, role):
         return next(u for u in self.s["teams"][side] if u["role"] == role)
-
-    def ready_skills(self, unit):
-        skills = self.champions[unit["champion"]]["skills"]
-        return [s for s in skills if unit["cooldowns"].get(s["key"], 0) <= self.s["time"]
-                and (s["key"] != "R" or self.s["time"] >= 360)]
-
-    def use_skill(self, unit, preferred=None):
-        ready = self.ready_skills(unit)
-        if not ready:
-            return {"key": "AA", "name": "기본 공격", "tags": ["damage"], "icon": "assets/skill-placeholder.svg"}
-        tagged = [s for s in ready if preferred in s["tags"]] if preferred else []
-        skill = self.rng.pick(tagged or ready)
-        unit["cooldowns"][skill["key"]] = self.s["time"] + (100 if skill["key"] == "R" else 35)
-        return skill
 
     def power(self, side, role=None):
         units = [self.unit(side, role)] if role else self.s["teams"][side]
@@ -163,13 +151,13 @@ class Match:
                   "teamfight": "한 번의 이니시에이팅", "siege": "포위망을 좁혀라",
                   "followup": "상대의 역갱" if follow == "countergank" else "심어 둔 와드의 보상"}
         context = f'{s["time"]//60}:{s["time"]%60:02d} · 골드 격차 {s["gold"][0]-s["gold"][1]:+,} · {ROLE_NAMES[lane]} 압박 {s["pressure"][lane]:+d}'
-        story = (f'{unit["name"]}의 {self.champions[unit["champion"]]["name"]}, {skill["name"]} 사용 가능. '
+        story = (f'{unit["name"]}의 {self.champions[unit["champion"]]["name"]}, {self.skill_label(skill)} 사용 가능. '
                  f'숙련도 {unit["mastery"]}. ' +
                  ("앞선 공격적인 선택을 읽은 상대가 측면으로 들어옵니다." if follow == "countergank" else
                   "앞서 확보한 시야에서 상대의 동선이 드러났습니다." if follow else
                   f'{label}을 두고 상대와 동선이 겹칩니다.'))
         options = [
-            {"id": "commit", "label": f'{skill["name"]}로 승부', "chance": p,
+            {"id": "commit", "label": f'{self.skill_label(skill)}로 승부', "chance": p,
              "detail": "+650G · 라인 압박 / 실패 시 상대 +500G · 역갱 위험", "effect": "commit"},
             {"id": "vision", "label": "시야를 먼저 확보", "chance": round(clamp(p+.16, .3, .96), 2),
              "detail": "150G 사용 · 성공 시 시야 +3 · 후속 기회", "effect": "vision"},
@@ -196,10 +184,11 @@ class Match:
         lane, kind = event["lane"], option["effect"]
         if kind == "commit":
             unit = self.unit(0, event["role"])
-            unit["cooldowns"][event["skill"]["key"]] = s["time"] + (100 if event["skill"]["key"] == "R" else 35)
+            self.spend_skill(unit, event["skill"])
             side = 0 if success else 1
             s["gold"][side] += 650 if success else 500
             s["kills"][side] += 1
+            self.after_encounter(self.unit(side, event["role"]), self.unit(1-side, event["role"]), True)
             s["momentum"][side] = min(6, s["momentum"][side]+1)
             s["pressure"][lane] = int(clamp(s["pressure"][lane] + (2 if success else -2), -8, 8))
             self.push(side, lane, 350 + s["time"]//8)
@@ -240,6 +229,7 @@ class Match:
         dt = self.rng.integer(24, 38)
         s["time"] += dt
         s["tick"] += 1
+        self.advance_forms(dt)
         for side in (0, 1):
             farm = sum(u["ratings"]["farm"] for u in s["teams"][side])/5
             s["gold"][side] += round(dt*(25 + farm/12))
@@ -250,6 +240,7 @@ class Match:
         skill = self.use_skill(unit, "aoe" if s["time"] > 900 else "cc")
         tag_bonus = 70 if "aoe" in skill["tags"] and s["time"] > 900 else 45 if "cc" in skill["tags"] else 0
         kill = self.rng.random() < (.34 if s["time"] < 900 else .56)
+        self.after_encounter(unit, self.unit(1-side, role), kill)
         if kill:
             count = self.rng.integer(1, 3) if s["time"] > 900 else 1
             s["kills"][side] += count
@@ -257,7 +248,7 @@ class Match:
         s["pressure"][lane] = int(clamp(s["pressure"][lane] + (1 if side == 0 else -1), -8, 8))
         phase = "한타" if s["time"] >= 900 else "갱킹" if role == "jng" else "라인전"
         self.log("fight" if kill else "lane", f'{ROLE_NAMES[lane]} {phase} · {unit["name"]}의 {self.champions[unit["champion"]]["name"]} '
-                 f'{skill["name"]}! {"킬을 만들었습니다." if kill else "주도권을 가져옵니다."}', side, skill)
+                 f'{self.skill_label(skill)}! {"킬을 만들었습니다." if kill else "주도권을 가져옵니다."}', side, skill)
         if s["time"] > 480:
             # Scaling siege pressure avoids endless stalemates but never assigns a timer winner.
             damage = round(180 + s["time"]*.13 + tag_bonus + (220 if s["buff_until"][side] > s["time"] else 0))
@@ -299,18 +290,21 @@ class Game:
         self.seed = seed
         self.rng = RNG(int(hashlib.sha256(seed.encode()).hexdigest()[:8], 16))
         self.actions = []
+        self.legacy_save = None
         self.match = None
         self.s = {"schema": 1, "seed": seed, "coins": 600, "owned": [], "roster": {},
                   "draft": {}, "season": None, "season_number": 0, "last_pull": None,
-                  "notice": "스타터 5장과 무료 크레딧 600을 받았습니다.", "trophies": 0}
-        for role in ROLES:
-            pool = [c for c in catalog["cards"] if c["role"] == role and 65 <= c["overall"] <= 76
-                    and c["player_id"] not in {self.cards[i]["player_id"] for i in self.s["owned"]}]
-            card = self.rng.pick(pool)
-            self.s["owned"].append(card["id"])
-            self.s["roster"][role] = card["id"]
-        self.reset_draft()
-        self.new_season()
+                  "notice": "리그와 연도를 골라 포지션별 무료 팩 5개를 열어주세요.", "trophies": 0,
+                  "starter": {"finished": False, "packs": {
+                      r: {"league": "any", "year": "any", "card": None} for r in ROLES}}}
+
+    def starter_pool(self, role, filters=None):
+        pack = filters or self.s["starter"]["packs"][role]
+        people = {self.cards[cid]["player_id"] for cid in self.s["owned"]}
+        return [c for c in self.catalog["cards"] if c["role"] == role
+                and (pack["league"] == "any" or c["league"] == pack["league"])
+                and (pack["year"] == "any" or str(c["year"]) == pack["year"])
+                and c["player_id"] not in people]
 
     def champion_pool(self, card):
         out = []
@@ -447,9 +441,44 @@ class Game:
         if record and len(self.actions) >= 12000:
             raise ValueError("세이브 기록이 가득 찼습니다. 내보낸 뒤 새 게임을 시작하세요.")
         kind = action["type"]
+        starter = self.s["starter"]
+        if kind.startswith("starter_") and starter["finished"]:
+            raise ValueError("시작 팩은 이미 모두 사용했습니다.")
+        if kind in ("pull", "equip", "draft", "start", "next_season") and not starter["finished"]:
+            raise ValueError("포지션별 팩 5개를 열고 구단 창단을 완료해주세요.")
         if kind in ("pull", "equip", "draft", "start", "next_season") and self.active():
             raise ValueError("경기 종료 후 변경할 수 있습니다.")
-        if kind == "pull":
+        if kind in ("starter_filter", "starter_open"):
+            role = action.get("role")
+            if role not in ROLES:
+                raise ValueError("잘못된 포지션입니다.")
+            pack = starter["packs"][role]
+            if pack["card"]:
+                raise ValueError("이 포지션 팩은 이미 열었습니다.")
+            if kind == "starter_filter":
+                league, year = action.get("league", pack["league"]), str(action.get("year", pack["year"]))
+                if league not in {"any", *(c["league"] for c in self.catalog["cards"])}:
+                    raise ValueError("지원하지 않는 리그입니다.")
+                if year not in {"any", *(str(c["year"]) for c in self.catalog["cards"])}:
+                    raise ValueError("지원하지 않는 연도입니다.")
+                pack.update(league=league, year=year)
+            else:
+                pool = self.starter_pool(role)
+                if not pool:
+                    raise ValueError("이 조건에서 뽑을 선수가 없습니다. 리그나 연도를 바꿔주세요.")
+                card = self.rng.pick(pool)
+                pack["card"] = card["id"]
+                self.s["owned"].append(card["id"])
+                self.s["roster"][role] = card["id"]
+                self.s["notice"] = f'{ROLE_NAMES[role]} 팩 · {card["year"]} {card["name"]} 영입!'
+        elif kind == "starter_finish":
+            if any(not p["card"] for p in starter["packs"].values()):
+                raise ValueError("포지션별 팩 5개를 먼저 열어주세요.")
+            starter["finished"] = True
+            self.reset_draft()
+            self.new_season()
+            self.s["notice"] = "드림팀 창단 완료! 무료 크레딧 600으로 다음 선수를 만나보세요."
+        elif kind == "pull":
             role = action.get("role", "any")
             if role not in (*ROLES, "any"):
                 raise ValueError("잘못된 포지션입니다.")
@@ -513,13 +542,22 @@ class Game:
         return None
 
     def view(self):
-        return {**copy.deepcopy(self.s), "match": copy.deepcopy(self.match.s) if self.match else None,
+        match = copy.deepcopy(self.match.s) if self.match else None
+        if match and isinstance(self.match, Match):
+            for side, team in enumerate(match["teams"]):
+                for index, unit in enumerate(team):
+                    unit["available_skills"] = self.match.ready_skills(self.match.s["teams"][side][index])
+        return {**copy.deepcopy(self.s), "match": match,
                 "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
+                "starter_counts": {r: len(self.starter_pool(r)) for r in ROLES}
+                if not self.s["starter"]["finished"] else {},
                 "save_actions": len(self.actions)}
 
     def export_save(self):
-        payload = {"schema": 1, "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
-                   "champions": self.champion_data["version"], "seed": self.seed, "actions": self.actions}
+        payload = {"schema": 2, "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
+                   "champions": self.champion_data["version"],
+                   "mechanics": self.champion_data.get("revision", self.champion_data["version"]),
+                   "seed": self.seed, "actions": self.actions, "legacy": self.legacy_save}
         payload["checksum"] = hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         return json.dumps(payload, ensure_ascii=False)
 
@@ -535,19 +573,41 @@ class Game:
             expected = hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
             if checksum != expected:
                 raise ValueError("세이브 무결성 검사에 실패했습니다.")
-            if data["schema"] != 1 or data["engine"] != ENGINE_VERSION:
+            if data["schema"] == 1 and data["engine"] == "1.0.0":
+                return cls.migrate_legacy(text, catalog, champions)
+            if data["schema"] != 2 or data["engine"] != ENGINE_VERSION:
                 raise ValueError("다른 버전의 세이브입니다.")
-            if data["dataset"] != catalog["version"] or data["champions"] != champions["version"]:
+            if (data["dataset"] != catalog["version"] or data["champions"] != champions["version"]
+                    or data.get("mechanics") != champions.get("revision", champions["version"])):
                 raise ValueError("데이터 버전이 다릅니다. 저장 당시 버전의 게임에서 불러오세요. 기존 세이브는 보존됩니다.")
             actions = data["actions"]
             if not isinstance(actions, list) or len(actions) > 12000:
                 raise ValueError("세이브 동작 수가 허용 범위를 초과했습니다.")
-            candidate = cls(catalog, champions, data["seed"])
+            candidate = (cls.migrate_legacy(data["legacy"], catalog, champions)
+                         if data.get("legacy") else cls(catalog, champions, data["seed"]))
+            if candidate.seed != data["seed"]:
+                raise ValueError("세이브의 시작 시드가 일치하지 않습니다.")
             for action in actions:
                 candidate.apply(action)
             return candidate
         except (KeyError, TypeError, json.JSONDecodeError) as exc:
             raise ValueError("올바른 Nexus Archive 세이브가 아닙니다.") from exc
+
+    @classmethod
+    def migrate_legacy(cls, text, catalog, champions):
+        # Replay with the unchanged v1 rules first. Never replace a user's earned roster.
+        from legacy_engine import Game as LegacyGame
+        old = LegacyGame.import_save(text, catalog, champions)
+        candidate = cls(catalog, champions, old.seed)
+        candidate.s = copy.deepcopy(old.s)
+        candidate.s["starter"] = {"finished": True, "packs": {
+            r: {"league": "any", "year": "any", "card": old.s["roster"][r]} for r in ROLES}}
+        candidate.s["notice"] = "기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 새 스킬 규칙을 적용합니다."
+        candidate.rng.state = old.rng.state
+        candidate.legacy_save = text
+        # In-flight v1 matches finish under v1 rules; future matches use the new engine.
+        candidate.match = old.match
+        return candidate
 
 
 class Bridge:

@@ -3,17 +3,20 @@ const ROOT = new URL('./', import.meta.url);
 const RUNTIME = 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/';
 let bridge;
 async function fetchText(path) {
-  const r = await fetch(new URL(path, ROOT));
+  const r = await fetch(new URL(path, ROOT), {cache:'no-cache'});
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
   return r.text();
 }
 const ready = (async () => {
   postMessage({status:'Python 경기 엔진을 준비하고 있습니다…'});
   const {loadPyodide} = await import(`${RUNTIME}pyodide.mjs`);
-  const [py, code, cards, champions] = await Promise.all([
-    loadPyodide({indexURL:RUNTIME}), fetchText('engine.py'), fetchText('data/cards.json'), fetchText('data/champions.json')
+  const [py, code, cards, champions, abilities, legacy] = await Promise.all([
+    loadPyodide({indexURL:RUNTIME}), fetchText('engine.py'), fetchText('data/cards.json'), fetchText('data/champions.json'),
+    fetchText('abilities.py'), fetchText('legacy_engine.py')
   ]);
   py.FS.writeFile('/home/pyodide/engine.py', code, {encoding:'utf8'});
+  py.FS.writeFile('/home/pyodide/abilities.py', abilities, {encoding:'utf8'});
+  py.FS.writeFile('/home/pyodide/legacy_engine.py', legacy, {encoding:'utf8'});
   const mod = py.pyimport('engine');
   bridge = mod.Bridge(cards, champions);
   mod.destroy();

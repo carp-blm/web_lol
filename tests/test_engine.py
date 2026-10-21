@@ -27,7 +27,11 @@ def finish(game, option="commit"):
 
 class EngineTests(unittest.TestCase):
     def game(self, seed="test"):
-        return Game(CATALOG, CHAMPIONS, seed)
+        game = Game(CATALOG, CHAMPIONS, seed)
+        for role in ROLES:
+            game.apply({"type": "starter_open", "role": role})
+        game.apply({"type": "starter_finish"})
+        return game
 
     def test_starter_covers_roles_and_has_real_evidence(self):
         g = self.game()
@@ -146,7 +150,10 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(m.s["towers"][1]["mid"],2)
 
     def test_skill_cooldown_and_ultimate_unlock(self):
-        g=self.game();g.apply({"type":"start"});m=g.match;u=m.unit(0,"mid")
+        g=self.game()
+        role=next(r for r in ROLES if g.s["draft"][r]=="Ahri") if "Ahri" in g.s["draft"].values() else "mid"
+        g.apply({"type":"draft","role":role,"champion":"Ahri"})
+        g.apply({"type":"start"});m=g.match;u=m.unit(0,role)
         self.assertNotIn("R",[s["key"] for s in m.ready_skills(u)])
         m.s["time"]=400
         self.assertIn("R",[s["key"] for s in m.ready_skills(u)])

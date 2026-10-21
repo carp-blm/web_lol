@@ -8,7 +8,7 @@ from build_data import ROOT
 
 def validate():
     web = ROOT / "web"
-    for file in ("index.html", "app.js", "worker.js", "engine.py", "style.css", "data/cards.json", "data/champions.json", "data/media.json"):
+    for file in ("index.html", "app.js", "worker.js", "engine.py", "abilities.py", "legacy_engine.py", "style.css", "data/cards.json", "data/champions.json", "data/media.json"):
         if not (web / file).is_file():
             raise ValueError(f"Missing required file: {file}")
     cards = json.loads((web / "data/cards.json").read_text(encoding="utf8"))
@@ -31,7 +31,7 @@ def build(output=None):
         raise ValueError("Build output is restricted to the project's dist directory")
     dest.mkdir(exist_ok=True)
     # No recursive delete. Only known frontend files are written, never source or raw CSVs.
-    for name in ("index.html", "app.js", "worker.js", "engine.py", "style.css"):
+    for name in ("index.html", "app.js", "worker.js", "engine.py", "abilities.py", "legacy_engine.py", "style.css"):
         shutil.copy2(ROOT / "web" / name, dest / name)
     for directory in ("assets", "data"):
         shutil.copytree(ROOT / "web" / directory, dest / directory, dirs_exist_ok=True)

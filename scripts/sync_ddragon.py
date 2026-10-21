@@ -1,6 +1,7 @@
 """Fetch public, versioned ko_KR Data Dragon JSON, never a private Riot API."""
 import argparse
 import concurrent.futures
+import gzip
 import hashlib
 import json
 import re
@@ -10,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from build_data import ROOT, read_json, write_json
+from skill_variants import REVIEWED_PATCH, enrich
 
 BASE = "https://ddragon.leagueoflegends.com"
 
@@ -42,6 +44,8 @@ def sync(version=None):
     version = version or fetch(f"{BASE}/api/versions.json")[0]
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         raise ValueError("Invalid Data Dragon version")
+    if version != REVIEWED_PATCH:
+        raise ValueError(f"Patch {version} needs an ability-family review; keeping reviewed {REVIEWED_PATCH}")
     summary = fetch(f"{BASE}/cdn/{version}/data/ko_KR/champion.json")
     def one(cid):
         url = f"{BASE}/cdn/{version}/data/ko_KR/champion/{cid}.json"
@@ -53,16 +57,23 @@ def sync(version=None):
                            "icon": f'{BASE}/cdn/{version}/img/{"passive" if key == "P" else "spell"}/{spell["image"]["full"]}'})
         return cid, {"id": cid, "name": c["name"], "tags": c["tags"], "skills": spells,
                      "portrait": f'{BASE}/cdn/{version}/img/champion/{c["image"]["full"]}',
-                     "source": url}
+                     "source": url}, c
     # Bounded concurrency; a partial fetch never replaces the last good snapshot.
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-        champions = dict(pool.map(one, sorted(summary["data"])))
+        records = list(pool.map(one, sorted(summary["data"])))
+    champions = {cid: c for cid, c, _ in records}
     if len(champions) < 100 or any(len(c["skills"]) != 5 for c in champions.values()):
         raise ValueError("Incomplete Data Dragon response")
-    write_json(ROOT / "web/data/champions.json", {"schema": 1, "version": version,
+    snapshot = enrich({"schema": 1, "version": version,
         "locale": "ko_KR", "champions": champions, "tag_method": "Korean description keyword heuristic v1",
         "permission": "Riot policy applies; game-use permission NOT established",
         "policy_url": "https://developer.riotgames.com/docs/lol#developer-api-policy"})
+    details = {"version": version, "locale": "ko_KR", "champions": {cid: raw for cid, _, raw in records}}
+    cache = ROOT / "data/champion_details.json.gz"
+    pending = cache.with_suffix(".tmp")
+    pending.write_bytes(gzip.compress(json.dumps(details, ensure_ascii=False, sort_keys=True).encode(), mtime=0))
+    write_json(ROOT / "web/data/champions.json", snapshot)
+    pending.replace(cache)
     print(f"Collected {len(champions)} champions, {len(champions)*5} passive/QWER names and icon URLs, patch {version}")
 
 

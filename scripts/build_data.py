@@ -174,6 +174,10 @@ def build(seed=None):
     if any(not any(c["role"] == r for c in cards) for r in ROLES):
         raise ValueError("Data must cover all five positions")
     version = hashlib.sha256((seed.read_bytes() + json.dumps(rules, sort_keys=True).encode())).hexdigest()[:16]
+    supplement_path = ROOT / "data/seed/vision.json"
+    supplement = read_json(supplement_path) if supplement_path.exists() else {}
+    for card in cards:
+        card["vision_stats"] = supplement.get("cards", {}).get(card["id"], {})
     overrides = read_json(ROOT / "data/media_overrides.json")["entries"]
     media = {}
     for c in cards:
@@ -183,6 +187,7 @@ def build(seed=None):
         media[team_key] = media_record(team_key, c["year"], c["team"], "logo", overrides)
     provenance = read_json(ROOT / "data/seed/provenance.json")
     write_json(ROOT / "web/data/cards.json", {"schema": 1, "version": version, "cards": cards,
+        "vision_revision": supplement.get("revision", "unavailable"),
         "coverage": {"years": sorted({c["year"] for c in cards}), "leagues": sorted({c["league"] for c in cards}),
                      "tiers": dict(collections.Counter(str(c["tier"]) for c in cards)), "cards": len(cards),
                      "appearances": len(seen)}, "provenance": provenance})
@@ -195,5 +200,7 @@ if __name__ == "__main__":
     parser.add_argument("--raw-dir", type=Path, help="Replace compact seed with eligible rows from local yearly CSVs")
     args = parser.parse_args()
     if args.raw_dir:
+        from build_vision import build as build_vision
+        build_vision(args.raw_dir)
         make_seed(args.raw_dir, read_json(ROOT / "data/league_tiers.json"))
     build()

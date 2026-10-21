@@ -12,6 +12,7 @@ from pathlib import Path
 
 from build_data import ROOT, read_json, write_json
 from skill_variants import REVIEWED_PATCH, enrich
+from skill_effects import enrich_effects
 
 BASE = "https://ddragon.leagueoflegends.com"
 
@@ -69,6 +70,7 @@ def sync(version=None):
         "permission": "Riot policy applies; game-use permission NOT established",
         "policy_url": "https://developer.riotgames.com/docs/lol#developer-api-policy"})
     details = {"version": version, "locale": "ko_KR", "champions": {cid: raw for cid, _, raw in records}}
+    snapshot = enrich_effects(snapshot, details)
     cache = ROOT / "data/champion_details.json.gz"
     pending = cache.with_suffix(".tmp")
     pending.write_bytes(gzip.compress(json.dumps(details, ensure_ascii=False, sort_keys=True).encode(), mtime=0))

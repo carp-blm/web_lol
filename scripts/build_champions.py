@@ -3,6 +3,7 @@ import gzip
 import json
 from build_data import ROOT, read_json, write_json
 from skill_variants import enrich
+from skill_effects import enrich_effects
 
 
 def build():
@@ -15,7 +16,7 @@ def build():
             target = next(s for s in snapshot["champions"][cid]["skills"] if s["key"] == key)
             if target["name"] != source["name"]:
                 raise ValueError(f"Base skill differs from the official pinned data: {cid} {key}")
-    result = enrich(snapshot)
+    result = enrich_effects(enrich(snapshot), details)
     write_json(ROOT / "web/data/champions.json", result)
     print(f"Audited {len(result['champions'])} champions; {len(result['variant_audit']['families'])} ability families; revision {result['revision']}")
 

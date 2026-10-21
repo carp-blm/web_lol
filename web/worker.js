@@ -10,13 +10,14 @@ async function fetchText(path) {
 const ready = (async () => {
   postMessage({status:'Python 경기 엔진을 준비하고 있습니다…'});
   const {loadPyodide} = await import(`${RUNTIME}pyodide.mjs`);
-  const [py, code, cards, champions, abilities, legacy] = await Promise.all([
-    loadPyodide({indexURL:RUNTIME}), fetchText('engine.py'), fetchText('data/cards.json'), fetchText('data/champions.json'),
-    fetchText('abilities.py'), fetchText('legacy_engine.py')
+  const [py, cards, champions] = await Promise.all([
+    loadPyodide({indexURL:RUNTIME}), fetchText('data/cards.json'), fetchText('data/champions.json')
   ]);
-  py.FS.writeFile('/home/pyodide/engine.py', code, {encoding:'utf8'});
-  py.FS.writeFile('/home/pyodide/abilities.py', abilities, {encoding:'utf8'});
-  py.FS.writeFile('/home/pyodide/legacy_engine.py', legacy, {encoding:'utf8'});
+  // RUNTIME_FILES_START
+  for (const name of ['engine.py','combat.py','abilities.py','legacy_engine.py','legacy_engine_v2.py','legacy_abilities_v2.py']) {
+    py.FS.writeFile(`/home/pyodide/${name}`, await fetchText(name), {encoding:'utf8'});
+  }
+  // RUNTIME_FILES_END
   const mod = py.pyimport('engine');
   bridge = mod.Bridge(cards, champions);
   mod.destroy();

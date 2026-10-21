@@ -8,11 +8,11 @@ const num = (n) => Number(n).toLocaleString('ko-KR');
 const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g,'');
 let catalog, champs, media, cards, aliases, state, saveText, busy=false, tab='home', auto=true, speed=1;
 let storageBlocked=false, storedRecovery=null, toastTimer, lastEventId=null;
-let lastOpenedRole=null;
+let lastOpenedRole=null, resumeAfterNew=false;
 const freshSeed=()=>`NEXUS-${Array.from(crypto.getRandomValues(new Uint32Array(2)),n=>n.toString(16)).join('-')}`;
 let collectionFilter={search:'',role:'any',year:'any',owned:'owned',limit:30};
 const STORAGE = `nexus-archive:${location.pathname.replace(/index\.html$/, '')}:v1`;
-const worker = new Worker(new URL('./worker.js?v=0.2.0', import.meta.url), {type:'module'});
+const worker = new Worker(new URL('./worker.js?v=0.2.1', import.meta.url), {type:'module'});
 let workerFailure=null;
 const pending=new Map(); let sequence=0;
 worker.onmessage=({data})=>{
@@ -117,7 +117,7 @@ function sources(){
 }
 function render(){
   if(!state)return;
-  $('#loading').hidden=true;$('#coins').textContent=num(state.coins);$('#export').disabled=false;$('#import').disabled=false;
+  $('#loading').hidden=true;$('#coins').textContent=num(state.coins);$('#export').disabled=false;$('#import').disabled=false;$('#restart').disabled=false;
   document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   document.querySelectorAll('.view').forEach(v=>v.hidden=v.id!==tab);
   ({home,arena,collection,season,sources})[tab]();
@@ -142,7 +142,7 @@ document.addEventListener('click',async(e)=>{
   if(b.hasAttribute('data-pull')){await act({type:'pull',role:$('#scout-role').value});return;}
   if(b.dataset.equip){await act({type:'equip',card:b.dataset.equip});return;}
   if(b.hasAttribute('data-more')){collectionFilter.limit+=30;collection();return;}
-  if(b.hasAttribute('data-new')){$('#seed-input').value=freshSeed();$('#new-dialog').showModal();return;}
+  if(b.hasAttribute('data-new')){if(busy){toast('현재 동작이 끝난 뒤 다시 눌러주세요.');return;}resumeAfterNew=auto;auto=false;$('#seed-input').value=freshSeed();$('#new-dialog').showModal();if(tab==='arena')arena();return;}
   if(b.hasAttribute('data-recovery')){download(storedRecovery,'nexus-recovery.json');return;}
 });
 document.addEventListener('change',async(e)=>{
@@ -154,8 +154,9 @@ document.addEventListener('input',e=>{if(e.target.id==='collection-search'){coll
 $('#export').onclick=()=>download(saveText,`nexus-season-${state.season_number}.json`);
 $('#import').onclick=()=>$('#save-file').click();
 $('#save-file').onchange=async(e)=>{const f=e.target.files[0];if(!f)return;if(f.size>4000000){toast('4MB 이하 세이브 파일을 선택하세요.',true);return;}auto=false;await act({type:'import',save:await f.text()},{switchTo:'home'});e.target.value='';};
-$('#confirm-new').onclick=async(e)=>{e.preventDefault();const seed=$('#seed-input').value.trim();if(!seed)return;$('#new-dialog').close();auto=false;await act({type:'new',seed},{switchTo:'home'});};
-document.addEventListener('keydown',e=>{if(tab==='arena'&&state?.match?.event&&!['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)&&/^[1-4]$/.test(e.key)){const o=state.match.event.options[Number(e.key)-1];if(o){e.preventDefault();act({type:'choose',option:o.id},{quiet:true});}}});
+$('#new-dialog').addEventListener('close',()=>{auto=resumeAfterNew;resumeAfterNew=false;if(state&&tab==='arena')arena();});
+$('#confirm-new').onclick=async(e)=>{e.preventDefault();if(busy)return;const seed=$('#seed-input').value.trim();if(!seed){$('#seed-input').reportValidity();return;}resumeAfterNew=false;$('#new-dialog').close();auto=false;await act({type:'new',seed},{switchTo:'home'});};
+document.addEventListener('keydown',e=>{if(!document.querySelector('dialog[open]')&&tab==='arena'&&state?.match?.event&&!['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)&&/^[1-4]$/.test(e.key)){const o=state.match.event.options[Number(e.key)-1];if(o){e.preventDefault();act({type:'choose',option:o.id},{quiet:true});}}});
 setInterval(()=>{if(auto&&!busy&&activeMatch()&&!state.match.event)act({type:'tick',steps:speed},{quiet:true});},650);
 async function fetchJSON(path){const r=await fetch(new URL(path,import.meta.url),{cache:'no-cache'});if(!r.ok)throw new Error(`${path} 파일을 읽을 수 없습니다 (${r.status}).`);return r.json();}
 async function boot(){

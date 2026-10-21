@@ -9,10 +9,10 @@ LANES = ("top", "mid", "bot")
 LABEL = {"top": "탑", "mid": "미드", "bot": "바텀", "jungle": "정글", "river": "강가"}
 CC = {"blind": .6, "slow": 1.0, "root": 1.8, "polymorph": 2.3,
       "stun": 2.5, "airborne": 3.3, "suppression": 3.3,
-      "silence": 1.2, "fear": 2.3, "charm": 2.3, "taunt": 2.3}
+      "silence": 1.2, "fear": 2.3, "charm": 2.3, "taunt": 2.3, "sleep": 2.5}
 CC_KO = {"blind": "실명", "slow": "감속", "root": "속박", "polymorph": "변이",
          "stun": "기절", "airborne": "공중에 뜸", "suppression": "제압",
-         "silence": "침묵", "fear": "공포", "charm": "매혹", "taunt": "도발"}
+         "silence": "침묵", "fear": "공포", "charm": "매혹", "taunt": "도발", "sleep": "수면"}
 
 
 def bound(n, low, high):
@@ -171,15 +171,30 @@ class CombatRules:
         self.after_encounter(attacker, victim, True)
         self.log("fight", f'{attacker["name"]} → {victim["name"]} 처치! {victim["return_at"]-self.s["time"]}초 뒤 복귀 · 성장과 인원 우위 확보.', side)
 
+    @staticmethod
+    def offensive(spell):
+        effects = spell.get("effects", {})
+        return effects.get("damage", "damage" in spell["tags"]) or bool(effects.get("cc"))
+
+    def attack_skills(self, unit):
+        pool = self._candidates(unit)
+        # A harmless setup cast may unlock an offensive recast (Sylas E).
+        return [s for s in self.ready_skills(unit) if self.offensive(s) or
+                (s.get("stage") == 1 and any(t["key"] == s["key"] and t.get("stage") == 2
+                 and self.offensive(t) for t in pool))]
+
     def cast_attack(self, caster, enemies, allies, lane, preferred="damage", forced=None):
         living = [u for u in enemies if self.present(u)]
         if not living or not self.present(caster):
             return None
-        candidates = [s for s in self.ready_skills(caster) if s.get("effects", {}).get("damage", "damage" in s["tags"]) or s.get("effects", {}).get("cc")]
+        candidates = self.attack_skills(caster)
         spell = forced if forced else self.rng.pick([s for s in candidates if preferred in s["tags"]] or candidates) if candidates else None
         spell = spell or {"key": "AA", "name": "기본 공격", "tags": ["damage"], "icon": "assets/skill-placeholder.svg"}
         self.spend_skill(caster, spell)
         effects = spell.get("effects", {})
+        if not self.offensive(spell):
+            self.log("skill", f'{caster["name"]} · {self.skill_label(spell)}로 위치를 잡고 후속 시전을 준비합니다.', caster["side"], spell)
+            return {"caster": caster["role"], "skill": spell.get("id", spell["key"]), "hits": 0, "cc": []}
         primary = self.rng.pick(living)
         targets = [primary] + [u for u in living if u is not primary] if effects.get("aoe") else [primary]
         targets = targets[:effects.get("max_targets", 5)]
@@ -202,7 +217,7 @@ class CombatRules:
             if caster["cc_until"] > self.s["time"]:
                 damage *= 1 - min(.6, caster["cc_strength"]*.15)
             damage *= .72 if caster["role"] == "sup" else 1
-            damage = self.protect(victim, damage, enemies, spell)
+            damage = self.protect(victim, damage, enemies, spell) if effects.get("damage", True) else 0
             victim["hp"] = round(max(0, victim["hp"]-damage), 2)
             if victim["hp"] <= 0:
                 self.kill_unit(caster, victim, allies)
@@ -445,7 +460,7 @@ class CombatRules:
         if unit not in active:
             unit = active[0]
             role = unit["role"]
-        ready = self.ready_skills(unit)
+        ready = self.attack_skills(unit)
         spell = max(ready, key=lambda x: max((CC.get(c, 0) for c in x.get("effects", {}).get("cc", [])), default=0), default={"key": "AA", "name": "기본 공격", "tags": ["damage"], "icon": "assets/skill-placeholder.svg"})
         cc = max((CC.get(c, 0) for c in spell.get("effects", {}).get("cc", [])), default=0)
         p = round(bound(self.encounter_odds(self.members(0), self.members(1), lane)+(unit["mastery"]-60)*.002+cc*.025, .12, .90), 2)

@@ -9,8 +9,8 @@ import json
 import re
 
 CC_PATTERNS = {"blind": r"실명", "slow": r"둔화|느려", "root": r"속박",
-               "polymorph": r"변이", "stun": r"기절", "airborne": r"공중에 (?:띄|뜬|떠)|공중으로|밀쳐|밀치|밀어내|끌어당|뒤로 던",
-               "suppression": r"제압", "silence": r"침묵", "fear": r"공포|달아나", "charm": r"매혹", "taunt": r"도발"}
+               "polymorph": r"변이", "stun": r"기절", "airborne": r"공중(?:에|으로)\s*(?:띄|뜬|떠|뜨)|밀쳐|밀치|밀어|밀리(?:며|고|는)|밀려|끌어당|뒤로 던",
+               "suppression": r"제압", "silence": r"침묵", "fear": r"공포|달아나|도망", "charm": r"매혹", "taunt": r"도발", "sleep": r"수면"}
 
 # Every ally-capable defensive skill is opt-in; enemy healing reduction, mana
 # restoration, pet HP, max-health scaling and shield breaking are not healing.
@@ -85,6 +85,26 @@ CC_OVERRIDES = {
     "Vi:Q": ["airborne"], "Vi:R": ["airborne"], "XinZhao:R": ["airborne"],
     "Nautilus:Q": ["airborne"], "Nautilus:R": ["airborne"], "Leblanc:mimic:E": ["root"],
     "LeeSin:base:Q1": [], "LeeSin:base:Q2": [], "LeeSin:base:E1": [], "LeeSin:base:E2": ["slow"],
+    # Tooltip references to the caster, a projectile, another skill or monsters
+    # must not become crowd control against an enemy champion.
+    "Draven:Q": [], "Aurora:Q": [], "Blitzcrank:W": [], "Jinx:Q": [],
+    "Khazix:R": [], "Quinn:R": [], "Xayah:R": [], "Varus:Q": [], "Xerath:Q": [],
+    "Urgot:W": [], "Viego:W": ["stun"], "Camille:E": ["stun"], "Galio:W": ["taunt"],
+    "Kled:E": [], "Taliyah:Q": ["slow"], "Singed:E": ["airborne", "root"],
+    "Kayn:base:W": ["slow"], "Kayn:shadow:W": ["slow"],
+    "AurelionSol:normal:R": ["stun"], "AurelionSol:empowered:R": ["airborne", "slow"],
+    "Leblanc:mimic:Q": [], "Leblanc:mimic:W": [],
+    "Sylas:base:E1": [], "Sylas:base:E2": ["airborne"],
+    "Fizz:base:E2": [], "Swain:base:R1": [],
+    "Twitch:W": ["slow"],
+}
+
+# Combined slot descriptions are insufficient for these distinct casts.
+DAMAGE_OVERRIDES = {
+    "Jayce:cannon:E": False, "RekSai:burrowed:E": False,
+    "Hwei:WQ": False, "Hwei:WW": False, "Sylas:base:E1": False,
+    "Nidalee:human:E": False, "Nidalee:cougar:E": True,
+    "Gangplank:base:Q": True,
 }
 
 
@@ -99,8 +119,14 @@ def enrich_effects(snapshot, details):
         for spell in champion["variants"]:
             key, identity = spell["key"], f'{cid}:{spell["key"]}'
             source = raw["passive"] if key == "P" else raw["spells"]["QWER".index(key)]
-            text = re.sub(r"<[^>]*>", " ", source.get("tooltip", source["description"]))
-            statuses = " ".join(re.findall(r"<status>(.*?)</status>", source.get("tooltip", "")))
+            tooltip = source.get("tooltip", source["description"])
+            description_fallback = not re.search(r"[가-힣]", tooltip)
+            if description_fallback:
+                tooltip = source["description"]
+            # Skill names in cross-references (e.g. Quinn's Q or Kha'Zix's Q)
+            # can contain CC words without applying that effect in this cast.
+            text = re.sub(r"<spellName>.*?</spellName>", "", tooltip)
+            text = re.sub(r"\s+", " ", re.sub(r"<[^>]*>", " ", text))
             cc = [name for name, pattern in CC_PATTERNS.items() if re.search(pattern, text)]
             cc = CC_OVERRIDES.get(spell["id"], CC_OVERRIDES.get(identity, cc))
             if spell.get("stage") == 2 and "cc" not in spell["tags"]:
@@ -130,14 +156,23 @@ def enrich_effects(snapshot, details):
                 aoe = False
             if cid == "Lulu" and key == "R": aoe = True
             if cid == "Aphelios" and form == "gravitum": aoe = True
+            if identity in ("Draven:E", "Draven:R", "Sylas:Q", "Lillia:R", "MonkeyKing:R", "Milio:Q", "Thresh:E", "Zac:R", "Ziggs:W", "Gragas:R", "Janna:R"):
+                aoe = True
+            # 'Damage absorbed/reduced' in shield text is not an attack.
+            damage = bool(re.search(r"<(?:physicalDamage|magicDamage|trueDamage|damage)>", tooltip, re.I)) if "tooltip" in source and not description_fallback else "피해" in text
+            damage = DAMAGE_OVERRIDES.get(spell["id"], damage)
+            if (cid == "Aphelios" and key == "Q") or (cid == "Heimerdinger" and key == "Q"):
+                damage = True
+            if spell.get("control") or spell.get("unavailable"):
+                damage = False
             defensive = [{"kind": kind, "target": target} for kind, target in defense]
             if identity == "Soraka:W": defensive[0]["health_cost"] = 10
             spell["effects"] = {"cc": cc, "defense": defensive, "aoe": aoe,
-                                "damage": "피해" in text and not (identity in DEFENSE and not cc and identity not in ("Senna:Q","Senna:R","Renata:E")),
-                                "classification": "curated" if identity in DEFENSE or identity in CC_OVERRIDES or spell["id"] in CC_OVERRIDES else "tooltip-and-curated-targets",
+                                "damage": damage,
+                                "classification": "curated" if identity in DEFENSE or identity in CC_OVERRIDES or spell["id"] in CC_OVERRIDES or spell["id"] in DAMAGE_OVERRIDES else "tooltip-and-curated-targets",
                                 "damage_type": "magic" if "마법 피해" in text and "물리 피해" not in text else "physical" if "물리 피해" in text else "mixed",
                                 "max_targets": 2 if identity in ("Lux:Q","Bard:Q") else 5,
-                                "secondary_cc": ["slow"] if identity in ("Ashe:R","Leona:R") else cc,
+                                "secondary_cc": ["slow"] if identity in ("Ashe:R","Leona:R","Milio:Q") or spell["id"] == "AurelionSol:empowered:R" else cc,
                                 "source": champion["source"]}
             for name in classified:
                 classified[name] += bool(spell["effects"][name])

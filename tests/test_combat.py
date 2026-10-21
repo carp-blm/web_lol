@@ -3,6 +3,7 @@ import gzip
 import io
 import json
 import sys
+import tempfile
 import unittest
 import zipfile
 from pathlib import Path
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "web"), str(ROOT / "scripts")]
 from engine import Game, Match, ROLES, RNG
 from combat import CC
-from build_site import runtime_archive, PYTHON_FILES
+from build_site import runtime_archive, fingerprint_assets, PYTHON_FILES
 from skill_effects import enrich_effects
 from legacy_engine_v2 import Game as GameV2
 
@@ -194,6 +195,52 @@ class CombatTests(unittest.TestCase):
         self.assertEqual(m.protect(victim,100,[u]),100)
         self.assertEqual(u["saves"],1)
 
+    def test_self_movement_monster_and_cross_skill_text_are_not_enemy_cc(self):
+        def effect(sid):
+            return next(s["effects"] for s in CHAMPS["champions"][sid.split(":")[0]]["variants"] if s["id"]==sid)
+        for sid in ("Draven:base:Q", "Aurora:base:Q", "Blitzcrank:base:W", "Jinx:base:Q",
+                    "Khazix:base:R", "Quinn:base:R", "Xayah:base:R", "Varus:base:Q",
+                    "Xerath:base:Q", "Urgot:base:W", "Kled:mounted:E", "Milio:base:W",
+                    "Milio:base:E", "Milio:base:R", "Sylas:base:E1", "Fizz:base:E2"):
+            with self.subTest(sid=sid): self.assertEqual(effect(sid)["cc"], [])
+        self.assertEqual(effect("Taliyah:base:Q")["cc"], ["slow"])
+        self.assertEqual(effect("AurelionSol:normal:R")["cc"], ["stun"])
+        self.assertEqual(effect("Kayn:shadow:W")["cc"], ["slow"])
+        self.assertIn("airborne",effect("Kayn:darkin:W")["cc"])
+        self.assertEqual(effect("Lillia:base:R")["cc"], ["sleep"])
+        for sid in ("MonkeyKing:base:R", "Janna:base:R", "Milio:base:Q", "Gragas:base:R", "Ziggs:base:W"):
+            with self.subTest(sid=sid): self.assertIn("airborne",effect(sid)["cc"])
+        for sid in ("Hwei:WQ", "Hwei:WW", "Jayce:cannon:E", "RekSai:burrowed:E", "Garen:base:W", "Mordekaiser:base:W"):
+            with self.subTest(sid=sid): self.assertFalse(effect(sid)["damage"])
+        for sid in ("Nidalee:cougar:E", "Nami:base:W", "Rakan:base:Q", "Gangplank:base:Q", "Aphelios:calibrum:Q"):
+            with self.subTest(sid=sid): self.assertTrue(effect(sid)["damage"])
+
+    def test_harmless_setup_unlocks_recast_without_damage_or_cc(self):
+        m=match();u=champion(m,0,"mid","Sylas");enemy=m.unit(1,"mid")
+        setup=next(s for s in m.attack_skills(u) if s["display_key"]=="E1")
+        before=(enemy["hp"],enemy["cc_until"],enemy["cc_strength"])
+        result=m.cast_attack(u,[enemy],[u],"mid",forced=setup)
+        self.assertEqual(result["hits"],0)
+        self.assertEqual(before,(enemy["hp"],enemy["cc_until"],enemy["cc_strength"]))
+        recast=next(s for s in m.attack_skills(u) if s["display_key"]=="E2")
+        m.rng.random=lambda:0
+        result=m.cast_attack(u,[enemy],[u],"mid",forced=recast)
+        self.assertEqual(result["hits"],1)
+        self.assertGreater(enemy["cc_until"],m.s["time"])
+
+    def test_cc_without_damage_and_shields_excluded_from_attack_choices(self):
+        m=match();u=champion(m,0,"sup","Lulu");enemy=m.unit(1,"bot")
+        poly=next(s for s in m.ready_skills(u) if s["key"]=="W")
+        m.rng.random=lambda:0
+        m.cast_attack(u,[enemy],[u],"bot",forced=poly)
+        self.assertEqual(enemy["hp"],100)
+        self.assertEqual(enemy["cc_strength"],CC["polymorph"])
+        u=champion(m,0,"sup","Janna")
+        u["cooldowns"].update(Q=100,W=100)
+        self.assertEqual(m.attack_skills(u),[])
+        m.make_event()
+        self.assertEqual(m.s["event"]["skill"]["key"],"AA")
+
     def test_aoe_hits_vary_and_cc_hits_every_target_actually_hit(self):
         counts=set()
         for seed in range(1,31):
@@ -230,6 +277,24 @@ class CombatTests(unittest.TestCase):
             self.assertEqual(set(z.namelist()),set(PYTHON_FILES))
             for name in z.namelist():compile(z.read(name),name,"exec")
         self.assertLess(len(first),sum((ROOT/"web"/p).stat().st_size for p in PYTHON_FILES)/3)
+
+    def test_engine_update_invalidates_worker_and_app_cache_references(self):
+        scratch=ROOT/"work"/"test-temp"
+        scratch.mkdir(parents=True,exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as folder:
+            dest=Path(folder).resolve()
+            self.assertTrue(dest.is_relative_to(scratch.resolve()))
+            for name in ("index.html","app.js","style.css","worker.js"):
+                (dest/name).write_bytes((ROOT/"web"/name).read_bytes())
+            fingerprint_assets(dest)
+            first={name:(dest/name).read_bytes() for name in ("app.js","index.html","style.css")}
+            fingerprint_assets(dest)
+            self.assertEqual(first,{name:(dest/name).read_bytes() for name in first})
+            with (dest/"worker.js").open("a",encoding="utf8") as f:f.write("\n// changed engine digest\n")
+            fingerprint_assets(dest)
+            self.assertNotEqual(first["app.js"],(dest/"app.js").read_bytes())
+            self.assertNotEqual(first["index.html"],(dest/"index.html").read_bytes())
+            self.assertEqual(first["style.css"],(dest/"style.css").read_bytes())
 
 
 if __name__ == "__main__":unittest.main()

@@ -4,6 +4,7 @@ import ast
 import hashlib
 import io
 import json
+import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -12,6 +13,22 @@ from build_data import ROOT
 PYTHON_FILES = ("engine.py", "combat.py", "abilities.py", "legacy_engine.py", "legacy_engine_v2.py", "legacy_abilities_v2.py")
 FRONTEND_FILES = ("index.html", "app.js", "worker.js", "style.css")
 DATA_FILES = ("cards.json", "champions.json", "media.json")
+
+
+def fingerprint_assets(dest):
+    """An engine update must invalidate the worker and its importing app."""
+    def rewrite(text, name):
+        digest = hashlib.sha256((dest / name).read_bytes()).hexdigest()[:16]
+        result, count = re.subn(r"\./" + re.escape(name) + r"\?v=[^'\"]+", f"./{name}?v={digest}", text)
+        if count != 1:
+            raise ValueError(f"Expected exactly one versioned reference to {name}")
+        return result
+    app = rewrite((dest / "app.js").read_text(encoding="utf8"), "worker.js")
+    (dest / "app.js").write_text(app, encoding="utf8", newline="\n")
+    html = (dest / "index.html").read_text(encoding="utf8")
+    for name in ("app.js", "style.css"):
+        html = rewrite(html, name)
+    (dest / "index.html").write_text(html, encoding="utf8", newline="\n")
 
 
 class StripDocs(ast.NodeTransformer):
@@ -86,7 +103,7 @@ def build(output=None):
     digest = hashlib.sha256(packed).hexdigest()
     worker = (dest / "worker.js").read_text(encoding="utf8")
     a, b = worker.index("  // RUNTIME_FILES_START"), worker.index("  // RUNTIME_FILES_END")+len("  // RUNTIME_FILES_END")
-    worker = worker[:a] + f'''  const response = await fetch(new URL('runtime.zip', ROOT), {{cache:'no-cache'}});
+    worker = worker[:a] + f'''  const response = await fetch(new URL('runtime.zip?v={digest}', ROOT), {{cache:'no-cache'}});
   if (!response.ok) throw new Error('Runtime unavailable');
   const packed = await response.arrayBuffer();
   const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', packed)), b => b.toString(16).padStart(2,'0')).join('');
@@ -94,6 +111,7 @@ def build(output=None):
   py.unpackArchive(packed, 'zip', {{extractDir:'/home/pyodide'}});
 ''' + worker[b:]
     (dest / "worker.js").write_text(worker, encoding="utf8")
+    fingerprint_assets(dest)
     # Delete only explicit obsolete build outputs; refuse unexpected files rather than publish them.
     for name in PYTHON_FILES:
         old = dest / name

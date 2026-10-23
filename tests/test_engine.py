@@ -175,6 +175,7 @@ class EngineTests(unittest.TestCase):
         count=0
         while g.s["season"]["phase"]!="complete":
             g.apply({"type":"start"});finish(g);count+=1
+            g.apply({"type":"reward_choice", "option":"credits"})
             self.assertLessEqual(count,11)
         self.assertEqual(g.s["season"]["round"],5)
         self.assertEqual(sum(t["wins"] for t in g.s["season"]["teams"]),15)

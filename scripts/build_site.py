@@ -10,7 +10,7 @@ import zipfile
 from pathlib import Path
 from build_data import ROOT
 
-PYTHON_FILES = ("engine.py", "combat.py", "abilities.py", "legacy_engine.py", "legacy_engine_v2.py", "legacy_abilities_v2.py")
+PYTHON_FILES = ("engine.py", "progression.py", "match_features.py", "draft.py", "combat.py", "abilities.py", "legacy_engine.py", "legacy_engine_v2.py", "legacy_abilities_v2.py", "legacy_engine_v3.py", "legacy_combat_v3.py")
 FRONTEND_FILES = ("index.html", "app.js", "worker.js", "style.css")
 DATA_FILES = ("cards.json", "champions.json", "media.json")
 

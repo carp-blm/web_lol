@@ -169,7 +169,8 @@ class CombatRules:
                 self.grant_gold(ally, 75)
         self.s["momentum"][side] = min(6, self.s["momentum"][side]+1)
         self.after_encounter(attacker, victim, True)
-        self.log("fight", f'{attacker["name"]} → {victim["name"]} 처치! {victim["return_at"]-self.s["time"]}초 뒤 복귀 · 성장과 인원 우위 확보.', side)
+        helpers = [u["name"] for u in allies if u is not attacker and self.present(u)]
+        self.log("fight", f'{attacker["name"]} → {victim["name"]} 처치! +300G' + (f' · 도움 {", ".join(helpers)} 각 +75G' if helpers else '') + f' · {victim["name"]} {victim["return_at"]-self.s["time"]}초 뒤 복귀.', side)
 
     @staticmethod
     def offensive(spell):
@@ -195,10 +196,11 @@ class CombatRules:
         if not self.offensive(spell):
             self.log("skill", f'{caster["name"]} · {self.skill_label(spell)}로 위치를 잡고 후속 시전을 준비합니다.', caster["side"], spell)
             return {"caster": caster["role"], "skill": spell.get("id", spell["key"]), "hits": 0, "cc": []}
-        primary = self.rng.pick(living)
-        targets = [primary] + [u for u in living if u is not primary] if effects.get("aoe") else [primary]
+        primary, reachable, targeting = self.select_combat_target(caster, living, spell, lane)
+        targets = [primary] + [u for u in reachable if u is not primary] if effects.get("aoe") else [primary]
         targets = targets[:effects.get("max_targets", 5)]
         hits = 0
+        hit_targets = []
         for victim in targets:
             if self.rng.random() >= self.hit_chance(caster, victim, lane, spell):
                 if victim is primary:
@@ -218,15 +220,22 @@ class CombatRules:
                 damage *= 1 - min(.6, caster["cc_strength"]*.15)
             damage *= .72 if caster["role"] == "sup" else 1
             damage = self.protect(victim, damage, enemies, spell) if effects.get("damage", True) else 0
+            actual_damage = round(min(victim["hp"], damage), 2)
             victim["hp"] = round(max(0, victim["hp"]-damage), 2)
+            caster["damage_dealt"] = round(caster["damage_dealt"]+actual_damage, 2)
+            victim["damage_taken"] = round(victim["damage_taken"]+actual_damage, 2)
+            hit_targets.append({"card_id": victim["card_id"], "name": victim["name"], "champion": victim["champion"],
+                                "role": victim["role"], "side": victim["side"], "damage": actual_damage, "hp": victim["hp"], "cc": cc})
             if victim["hp"] <= 0:
                 self.kill_unit(caster, victim, allies)
             else:
                 self.after_encounter(caster, victim, False)
         if hits:
             names = "/".join(CC_KO.get(x, x) for x in effects.get("cc", []))
-            self.log("skill", f'{caster["name"]} · {self.skill_label(spell)} {hits}명 적중' + (f' · {names}, 후속 공격 기회!' if names else '.'), caster["side"], spell)
-        return {"caster": caster["role"], "skill": spell.get("id", spell["key"]), "hits": hits, "cc": effects.get("cc", [])}
+            victims = ", ".join(f'{t["name"]}({self.champions[t["champion"]]["name"]}) −{t["damage"]:.1f}%p' for t in hit_targets)
+            self.log("skill", f'{caster["name"]} · {self.skill_label(spell)} → {victims} 적중' + (f' · {names}' if names else '') + f' · {targeting}', caster["side"], spell)
+        return {"caster": caster["role"], "caster_name": caster["name"], "side": caster["side"], "skill": spell.get("id", spell["key"]),
+                "skill_name": spell["name"], "hits": hits, "targets": hit_targets, "targeting": targeting, "cc": effects.get("cc", [])}
 
     def recall(self, unit, lane):
         unit.update(status="recall", location="base", return_at=self.s["time"]+self.rng.integer(24, 36), roam_until=0)
@@ -245,7 +254,7 @@ class CombatRules:
         odds = self.encounter_odds(blue, red, lane)
         info = {"time": s["time"], "kind": kind, "lane": lane, "sides": [[u["role"] for u in blue], [u["role"] for u in red]], "odds": round(odds, 3), "casts": []}
         labels = {"lane": "라인 교전", "gank": "갱킹", "counterjungle": "카운터 정글 조우", "jungle_duel": "정글 1대1", "invade": "초반 인베이드", "teamfight": "한타", "ambush": "시야 밖 기습", "objective": "오브젝트 교전", "roam": "로밍 합류"}
-        self.log("encounter", f'{LABEL[lane]} · {labels.get(kind, kind)} {len(blue)}대{len(red)} · 체력·성장·시야가 교전에 반영됩니다.')
+        self.log("encounter", f'{LABEL[lane]} · {labels.get(kind, kind)} {len(blue)}대{len(red)} · 우리 {", ".join(u["name"] for u in blue)} / 상대 {", ".join(u["name"] for u in red)}')
         for turn in range(rounds):
             first = initiative if turn == 0 and initiative is not None else 0 if self.rng.random() < odds else 1
             for side in (first, 1-first):
@@ -479,7 +488,7 @@ class CombatRules:
                             "detail": "체력 보존 · 라인 주도권 양보", "effect": "disengage"})
         s["event"] = {"id": f'e-{s["tick"]}', "kind": kind, "title": "앞선 선택이 만든 다음 기회" if follow else "잠깐, 팀의 방향을 정해주세요",
                       "context": f'{s["time"]//60}:{s["time"]%60:02d} · {LABEL[lane]} 주도권 {s["pressure"][lane]:+d} · 시야 {self.vision_delta(0,lane):+.1f}',
-                      "story": f'{unit["name"]} 체력 {round(unit["hp"])}% · 숙련도 {unit["mastery"]}. 자동 교전은 계속되며, 지금은 중요한 전술만 결정합니다. ' + ("앞선 공격을 읽은 역갱 위험입니다." if follow == "countergank" else ""),
+                      "story": f'{unit["name"]} 체력 {round(unit["hp"])}% · 숙련도 {unit["mastery"]}. 선택을 마칠 때까지 경기 시간이 멈춥니다. ' + ("앞선 공격을 읽은 역갱 위험입니다." if follow == "countergank" else ""),
                       "lane": lane, "role": role, "objective": obj, "skill": spell, "options": options}
         s["followup"] = None
 
@@ -532,7 +541,7 @@ class CombatRules:
                 if u["hp"] < 45:
                     self.recall(u, lane)
         s["decisions"].append({"event": event["id"], "kind": event["kind"], "choice": option_id, "success": success, "chance": option["chance"], "time": s["time"]})
-        self.log("decision", f'{option["label"]} · 전술 {"성공" if success else "실패"} ({round(option["chance"]*100)}%). 이후 교전·성장에 반영됩니다.', 0, event["skill"])
+        self.log("decision", f'{option["label"]} · 전술 {"성공" if success else "실패"} ({round(option["chance"]*100)}%).', 0, event["skill"])
         s["event"] = None
         s["next_event"] = s["time"] + self.rng.integer(210, 330)
 
@@ -578,6 +587,8 @@ class CombatRules:
             lane = self.rng.pick(LANES)
             self.encounter("lane", lane, self.lane_members(0,lane), self.lane_members(1,lane), rounds=2)
             s["next_lane"] = now+self.rng.integer(17, 29)
+            if s["event"]:
+                return
         if now >= s["next_jungle"]:
             self.jungle_action(self.rng.integer(0,1))
             s["next_jungle"] = now+self.rng.integer(24, 38)
@@ -602,7 +613,7 @@ class CombatRules:
             if now >= s[key] and token not in s["announced"]:
                 s["announced"].append(token)
                 self.log("objective", f'{label} 출현 · 시야와 합류 인원을 확인하세요.')
-        if now >= s["next_event"] and s["winner"] is None:
+        if now >= s["next_event"] and s["winner"] is None and not s["event"]:
             self.make_event()
 
     def simulate(self):

@@ -1,0 +1,46 @@
+{
+  "version": "16.20.1",
+  "source": "https://ddragon.leagueoflegends.com/cdn/16.20.1/data/ko_KR/item.json",
+  "items": {
+    "3190": {
+      "name": "강철의 솔라리 펜던트",
+      "image": "3190.png"
+    },
+    "2065": {
+      "name": "슈렐리아의 군가",
+      "image": "2065.png"
+    },
+    "3031": {
+      "name": "무한의 대검",
+      "image": "3031.png"
+    },
+    "3083": {
+      "name": "워모그의 갑옷",
+      "image": "3083.png"
+    },
+    "3089": {
+      "name": "라바돈의 죽음모자",
+      "image": "3089.png"
+    },
+    "3157": {
+      "name": "존야의 모래시계",
+      "image": "3157.png"
+    },
+    "1052": {
+      "name": "증폭의 고서",
+      "image": "1052.png"
+    },
+    "2055": {
+      "name": "제어 와드",
+      "image": "2055.png"
+    },
+    "2140": {
+      "name": "분노의 영약",
+      "image": "2140.png"
+    },
+    "2139": {
+      "name": "마법의 영약",
+      "image": "2139.png"
+    }
+  }
+}

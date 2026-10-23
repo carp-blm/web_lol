@@ -14,7 +14,7 @@ const ready = (async () => {
     loadPyodide({indexURL:RUNTIME}), fetchText('data/cards.json'), fetchText('data/champions.json')
   ]);
   // RUNTIME_FILES_START
-  for (const name of ['engine.py','combat.py','abilities.py','legacy_engine.py','legacy_engine_v2.py','legacy_abilities_v2.py']) {
+  for (const name of ['engine.py','progression.py','match_features.py','draft.py','combat.py','abilities.py','legacy_engine.py','legacy_engine_v2.py','legacy_abilities_v2.py','legacy_engine_v3.py','legacy_combat_v3.py']) {
     py.FS.writeFile(`/home/pyodide/${name}`, await fetchText(name), {encoding:'utf8'});
   }
   // RUNTIME_FILES_END

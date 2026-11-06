@@ -63,7 +63,8 @@ class ProgressionMatchRules:
             self.s["synergies"].append(synergy_groups(team))
             for unit in team:
                 # 10 / 20 / 40 / 20 / 10 percent; fixed once per match.
-                roll = self.rng.integer(1, 100)
+                # Engine 6 stamina/morale/traits shift the same single draw; 0 keeps older rules.
+                roll = bound(self.rng.integer(1, 100) + int(unit.get("condition_shift", 0)), 1, 100)
                 index = 0 if roll <= 10 else 1 if roll <= 30 else 2 if roll <= 70 else 3 if roll <= 90 else 4
                 label, delta = CONDITIONS[index]
                 applied = max(delta, unit.get("condition_floor", -6))
@@ -227,12 +228,12 @@ class CampaignRules:
             for stat in STATS:
                 extra = min(.20, unit["saves"]*.04 + unit["assists"]*.005) if stat == "vision" else min(.20, farm*.08) if stat == "farm" else min(.20, involvement*.025) if stat == "combat" else 0
                 before = self.permanent_ratings(cid)[stat]
-                delta = round(min(99-before, base+extra), 2)
+                delta = round(min(99-before, (base+extra)*(1+unit.get("growth_bonus", 0))), 2)
                 progress["stats"][stat] = round(progress["stats"][stat]+delta, 2)
                 deltas[stat] = delta
             raw_mastery = next((p["mastery"] for p in self.champion_pool(self.cards[cid]) if p["id"] == champion), 35)
             before = min(100, raw_mastery + progress["mastery"].get(champion, 0))
-            mastery_delta = round(min(100-before, (.50 + .35*won + score*.25)*(1+unit.get("mastery_growth_bonus", 0))), 2)
+            mastery_delta = round(min(100-before, (.50 + .35*won + score*.25)*(1+unit.get("mastery_growth_bonus", 0)+unit.get("growth_bonus", 0))), 2)
             progress["mastery"][champion] = round(progress["mastery"].get(champion, 0)+mastery_delta, 2)
             progress["games"] += 1
             progress["wins"] += int(won)

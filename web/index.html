@@ -5,26 +5,31 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net/pyodide/v0.27.7/full/; worker-src 'self'; connect-src 'self' https://cdn.jsdelivr.net/pyodide/v0.27.7/full/; img-src 'self' https://ddragon.leagueoflegends.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0d1318">
+  <meta name="theme-color" content="#090f14">
   <meta name="description" content="실제 프로 선수 기록으로 만드는 나만의 팀. 싱글플레이 전술 로그라이크 Nexus Archive.">
   <title>NEXUS ARCHIVE · 나만의 드림팀</title>
   <link rel="icon" type="image/svg+xml" href="./assets/mark.svg">
-  <link rel="stylesheet" href="./style.css?v=0.4.0">
+  <link rel="stylesheet" href="./style.css?v=0.6.0">
+  <link rel="stylesheet" href="./broadcast.css?v=0.6.0">
+  <link rel="stylesheet" href="./ops.css?v=0.6.0">
 </head>
 <body>
 <div class="shell">
   <aside class="sidebar">
     <a class="brand" href="./" aria-label="Nexus Archive 홈"><img src="./assets/mark.svg" alt=""><span>NEXUS<br><b>ARCHIVE</b></span></a>
-    <div class="sidebar-label">MANAGER'S DESK</div>
+    <div class="sidebar-label">YOUR NEXT CHAPTER</div>
     <nav aria-label="주 메뉴">
-      <button class="nav active" data-tab="home"><span>◈</span> 구단 본부 <small>01</small></button>
-      <button class="nav" data-tab="arena"><span>⌁</span> 경기 관전 <small>02</small></button>
-      <button class="nav" data-tab="collection"><span>▧</span> 선수 컬렉션 <small>03</small></button>
-      <button class="nav" data-tab="relics"><span>✦</span> 유물 보관함 <small>04</small></button>
-      <button class="nav" data-tab="season"><span>⚑</span> 시즌 기록 <small>05</small></button>
-      <button class="nav" data-tab="sources"><span>◎</span> 데이터 & 출처 <small>06</small></button>
+      <button class="nav active" data-tab="home"><span>◈</span> 클럽 하우스 <small>01</small></button>
+      <button class="nav" data-tab="ops"><span>⚙</span> 운영 센터 <small>OPS</small></button>
+      <button class="nav" data-tab="draft-room"><span>▱</span> 드래프트 룸 <small>02</small></button>
+      <button class="nav" data-tab="arena"><span>⌁</span> 라이브 아레나 <small>LIVE</small></button>
+      <div class="nav-divider">BUILD YOUR LEGACY</div>
+      <button class="nav" data-tab="collection"><span>▧</span> 선수 아카이브 <small>04</small></button>
+      <button class="nav" data-tab="relics"><span>✦</span> 전술 연구실 <small>05</small></button>
+      <button class="nav" data-tab="season"><span>⚑</span> 시즌 여정 <small>06</small></button>
+      <button class="nav" data-tab="sources"><span>◎</span> 기록 & 출처 <small>07</small></button>
     </nav>
-    <div class="sidebar-bottom"><span class="status-dot"></span> SINGLE PLAYER<br><small>다른 시대. 같은 승리의 꿈.</small><div class="version">LOCAL SAVE · MVP 0.4</div></div>
+    <div class="sidebar-bottom"><span class="status-dot"></span> THE NEXT DYNASTY<br><small>다른 시대. 같은 승리의 꿈.</small><div class="version">LOCAL SAVE · SEASON 0.6</div></div>
   </aside>
   <div class="workspace">
     <header class="topbar"><div><span class="muted">YOUR CLUB</span><strong>NEXUS CLUB <span class="tiny-badge">감독</span></strong></div>
@@ -32,6 +37,7 @@
     <main id="main">
       <div id="loading" class="loading"><span class="eyebrow">NEXUS ARCHIVE</span><h1>감독님의 자리를<br>준비하고 있습니다.</h1><div class="loading-track"><i></i></div><p id="load-status">실제 출전 기록과 Python 경기 엔진을 불러오는 중…</p><small>첫 실행에는 네트워크 상태에 따라 시간이 걸립니다.</small></div>
       <section id="home" class="view" hidden></section>
+      <section id="ops" class="view" hidden></section>
       <section id="arena" class="view" hidden></section>
       <section id="collection" class="view" hidden></section>
       <section id="relics" class="view" hidden></section>
@@ -46,6 +52,6 @@
 <dialog id="match-dialog" aria-labelledby="match-dialog-title"><div id="match-dialog-content"></div></dialog>
 <dialog id="ability-dialog" class="ability-dialog" aria-label="형태별 스킬"><form method="dialog"><button class="ghost dialog-close" aria-label="스킬 설명 닫기">닫기 ×</button></form><div id="ability-content"></div></dialog>
 <dialog id="new-dialog" aria-labelledby="new-title"><form method="dialog"><span class="eyebrow">NEW ARCHIVE</span><h2 id="new-title">새로 시작할까요?</h2><p>확인하면 현재 선수·재화·시즌이 초기화되고<br>무료 포지션 팩 5개와 600 CR로 다시 시작합니다.<br>보관할 기록은 먼저 세이브를 내보내 주세요.</p><label>재현 시드<input id="seed-input" value="NEXUS-2026" maxlength="80" required></label><div class="dialog-actions"><button value="cancel" class="ghost">돌아가기</button><button id="confirm-new" value="default" class="primary">새로 시작하기</button></div></form></dialog>
-<script type="module" src="./app.js?v=0.4.0"></script>
+<script type="module" src="./app.js?v=0.6.0"></script>
 </body>
 </html>

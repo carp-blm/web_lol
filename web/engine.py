@@ -11,10 +11,14 @@ from abilities import AbilityRules
 from combat import CombatRules
 from progression import CampaignRules, ProgressionMatchRules, RELICS
 from match_features import MatchFeatures
-from draft import DraftRules
+from tournament import DraftRules
+from battlefield import BattlefieldRules
+from summoners import SummonerRules, CATALOG as SUMMONERS, DEFAULTS as SUMMONER_DEFAULTS
+from combos import ComboRules
+from management import ManagementRules, DIVISIONS, AI_STYLES, plan_counter
 from legacy_engine_v2 import Match as PreviousMatch
 
-ENGINE_VERSION = "4.0.0"
+ENGINE_VERSION = "6.0.0"
 ROLES = ("top", "jng", "mid", "bot", "sup")
 LANES = ("top", "mid", "bot")
 ROLE_NAMES = {"top": "탑", "jng": "정글", "mid": "미드", "bot": "바텀", "sup": "서포터"}
@@ -54,16 +58,17 @@ def normalize(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-class Match(MatchFeatures, ProgressionMatchRules, CombatRules, AbilityRules, PreviousMatch):
+class Match(BattlefieldRules, SummonerRules, ComboRules, MatchFeatures, ProgressionMatchRules, CombatRules, AbilityRules, PreviousMatch):
     def __init__(self, blue, red, seed, champions):
         super().__init__(blue, red, seed, champions)
         self.initialize_combat()
         self.initialize_progression()
         self.initialize_match_features()
+        self.initialize_battlefield()
 
 
 
-class Game(DraftRules, CampaignRules):
+class Game(ManagementRules, DraftRules, CampaignRules):
     def __init__(self, catalog, champion_data, seed="NEXUS-2026"):
         if not isinstance(seed, str) or not 1 <= len(seed) <= 80:
             raise ValueError("시드는 1~80자 문자열이어야 합니다.")
@@ -84,7 +89,9 @@ class Game(DraftRules, CampaignRules):
                   "starter": {"finished": False, "packs": {
                       r: {"league": "any", "year": "any", "card": None} for r in ROLES}}}
         self.initialize_campaign()
+        self.initialize_management()
         self.s["banpick"] = None
+        self.s["summoner_loadouts"] = copy.deepcopy(SUMMONER_DEFAULTS)
 
     def starter_pool(self, role, filters=None):
         pack = filters or self.s["starter"]["packs"][role]
@@ -137,20 +144,26 @@ class Game(DraftRules, CampaignRules):
 
     def new_season(self):
         self.s["season_number"] += 1
-        teams = [{"name": TEAM_NAMES[0], "roster": [], "wins": 0, "losses": 0}]
+        names = self.division()["teams"]
+        teams = [{"name": names[0], "roster": [], "wins": 0, "losses": 0, "style": None}]
         for i in range(1, 6):
-            teams.append({"name": TEAM_NAMES[i], "roster": self.random_roster(68+i*2), "wins": 0, "losses": 0})
+            teams.append({"name": names[i], "roster": self.random_roster(self.ai_team_target(i)), "wins": 0, "losses": 0,
+                          "style": self.rng.pick(list(AI_STYLES))})
         rotation, schedule = list(range(6)), []
         for _ in range(5):
             schedule.append([[rotation[i], rotation[5-i]] for i in range(3)])
             rotation = [rotation[0], rotation[-1], *rotation[1:-1]]
         self.s["season"] = {"phase": "regular", "round": 0, "teams": teams, "schedule": schedule,
                             "history": [], "series": [0, 0], "opponent": None, "finalist": None,
-                            "champion": None, "standings": list(range(6))}
+                            "champion": None, "standings": list(range(6)), "division": self.ops["division"]}
+        self.setup_season_management()
 
     def simulate_ai(self, a, b):
         teams = self.s["season"]["teams"]
-        match = Match(self.units(teams[a]["roster"]), self.units(teams[b]["roster"]), self.rng.next(), self.champions)
+        sa, sb = teams[a].get("style") or "balanced", teams[b].get("style") or "balanced"
+        blue = self.apply_plan(self.units(teams[a]["roster"]), sa, sb)
+        red = self.apply_plan(self.units(teams[b]["roster"]), sb, sa)
+        match = Match(blue, red, self.rng.next(), self.champions)
         winner = a if match.simulate() == 0 else b
         return winner
 
@@ -174,7 +187,8 @@ class Game(DraftRules, CampaignRules):
         m["claimed"] = True
         season = self.s["season"]
         won = m["winner"] == 0
-        reward = 240 if won else 140
+        scale = DIVISIONS[season.get("division", 0)]["reward"]
+        reward = round((240 if won else 140) * scale)
         self.s["coins"] += reward
         opp = self.opponent()
         season["history"].append({"opponent": opp, "won": won, "phase": season["phase"], "duration": m["time"], "seed": m["seed"], "reward": reward})
@@ -182,6 +196,8 @@ class Game(DraftRules, CampaignRules):
         if m.get("progression_rules"):
             self.match.finish_awards()
             self.settle_progression(won)
+        if m.get("ops_rules"):
+            self.settle_week(won, m)
         if season["phase"] == "regular":
             for a, b in season["schedule"][season["round"]]:
                 winner = (0 if won else opp) if 0 in (a, b) else self.simulate_ai(a, b)
@@ -205,7 +221,7 @@ class Game(DraftRules, CampaignRules):
                     season["opponent"] = next(i for i in mine if i != 0)
                     season["finalist"] = self.simulate_series(*other)
                     season["phase"] = "semifinal"
-                    self.s["coins"] += 200
+                    self.s["coins"] += round(200 * scale)
         else:
             season["series"][0 if won else 1] += 1
             if max(season["series"]) == 2:
@@ -217,12 +233,14 @@ class Game(DraftRules, CampaignRules):
                     season["phase"] = "final"
                     season["opponent"] = season["finalist"]
                     season["series"] = [0, 0]
-                    self.s["coins"] += 300
+                    self.s["coins"] += round(300 * scale)
                 else:
                     season["phase"] = "complete"
                     season["champion"] = 0
                     self.s["trophies"] += 1
-                    self.s["coins"] += 600
+                    self.s["coins"] += round(600 * scale)
+        if season["phase"] == "complete" and "management" in self.s:
+            self.close_season()
 
     def active(self):
         return self.match is not None and self.match.s["winner"] is None
@@ -234,6 +252,7 @@ class Game(DraftRules, CampaignRules):
             raise ValueError("세이브 기록이 가득 찼습니다. 내보낸 뒤 새 게임을 시작하세요.")
         kind = action["type"]
         campaign_actions = ("buy_relic", "assign_relic", "use_relic", "reward_choice")
+        management_actions = ("set_training", "set_plan", "sign_sponsor")
         starter = self.s["starter"]
         if kind.startswith("starter_") and starter["finished"]:
             raise ValueError("시작 팩은 이미 모두 사용했습니다.")
@@ -245,7 +264,16 @@ class Game(DraftRules, CampaignRules):
             raise ValueError("경기 후 발견한 유물 보상을 먼저 선택해주세요.")
         if self.s.get("banpick") and kind in ("pull", "equip", "draft", "next_season", "begin_draft"):
             raise ValueError("진행 중인 밴픽을 먼저 완료해주세요.")
-        if kind in ("begin_draft", "ban_champion", "pick_champion"):
+        if kind == "summoner_loadout":
+            role, spells = action.get("role"), action.get("spells")
+            if not starter["finished"] or self.active() or role not in ROLES:
+                raise ValueError("경기 전에 소환사 주문을 준비하세요.")
+            if not isinstance(spells, list) or len(spells) != 2 or any(not isinstance(k, str) or k not in SUMMONERS for k in spells) or len(set(spells)) != 2:
+                raise ValueError("서로 다른 소환사 주문 두 개를 선택하세요.")
+            if (role == "jng") != ("smite" in spells):
+                raise ValueError("정글러는 강타를 반드시 장착하며 다른 포지션은 강타를 사용할 수 없습니다.")
+            self.s["summoner_loadouts"][role] = spells[:]
+        elif kind in ("begin_draft", "ban_champion", "pick_champion"):
             self.draft_action(action)
         elif kind == "target_focus":
             if not self.active() or not self.match.s.get("progression_rules") or action.get("focus") not in ("front", "rear"):
@@ -257,6 +285,8 @@ class Game(DraftRules, CampaignRules):
             self.match.s["reports"].pop(0)
         elif kind in campaign_actions:
             self.campaign_action(action)
+        elif kind in management_actions:
+            self.management_action(action)
         elif kind in ("starter_filter", "starter_open"):
             role = action.get("role")
             if role not in ROLES:
@@ -329,11 +359,19 @@ class Game(DraftRules, CampaignRules):
                 raise ValueError("밴픽을 먼저 완료해주세요.")
             ids = [self.s["roster"][r] for r in ROLES]
             red = self.units(self.s["season"]["teams"][opponent]["roster"], banpick["picks"][1] if banpick else None, campaign=False)
-            self.match = Match(self.units(ids, self.s["draft"]), red, self.rng.next(), self.champions)
+            enemy_style = self.s["season"]["teams"][opponent].get("style") or "balanced"
+            red = self.apply_plan(red, enemy_style, self.ops["plan"])
+            blue = self.units(ids, self.s["draft"])
+            for unit in blue:
+                unit["summoner_loadout"] = self.s["summoner_loadouts"][unit["role"]][:]
+            self.match = Match(blue, red, self.rng.next(), self.champions)
             self.match.s["banpick"] = copy.deepcopy(banpick)
             self.match.s["interactive"] = bool(banpick)
             self.s["banpick"] = None
             self.match.s["opponent_name"] = self.s["season"]["teams"][opponent]["name"]
+            self.match.s["ops_rules"] = 1
+            self.match.s["plans"] = {"ours": self.ops["plan"], "theirs": enemy_style,
+                                     "counter": plan_counter(self.ops["plan"], enemy_style)}
             self.match.s["prepared_relics"] = self.s["prepared_relics"][:]
             self.s["prepared_relics"] = []
         elif kind == "tick":
@@ -350,7 +388,12 @@ class Game(DraftRules, CampaignRules):
         elif kind == "choose":
             if not self.match:
                 raise ValueError("진행 중인 경기가 없습니다.")
-            self.match.choose(action.get("option"))
+            if action.get("summoner"):
+                if not hasattr(self.match, "choose_with_summoner"):
+                    raise ValueError("이전 버전 경기에는 소환사 주문이 없습니다.")
+                self.match.choose_with_summoner(action.get("option"), action.get("role"), action["summoner"])
+            else:
+                self.match.choose(action.get("option"))
             self.settle()
         elif kind == "next_season":
             if self.s["season"]["phase"] != "complete":
@@ -372,7 +415,11 @@ class Game(DraftRules, CampaignRules):
             for side, team in enumerate(match["teams"]):
                 for index, unit in enumerate(team):
                     unit["available_skills"] = self.match.ready_skills(self.match.s["teams"][side][index])
+        if match and match.get("rules") == "spatial-v5" and match["event"]:
+            for option in match["event"]["options"]:
+                option["summoners"] = self.match.summoner_options(match["event"], option)
         return {**copy.deepcopy(self.s), "match": match,
+                "summoner_catalog": copy.deepcopy(SUMMONERS),
                 "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
                 "relic_catalog": copy.deepcopy(RELICS),
                 "relic_availability": {rid: self.relic_block(rid) for rid in RELICS},
@@ -380,10 +427,11 @@ class Game(DraftRules, CampaignRules):
                 if self.s["starter"]["finished"] else [],
                 "starter_counts": {r: len(self.starter_pool(r)) for r in ROLES}
                 if not self.s["starter"]["finished"] else {},
-                "save_actions": len(self.actions)}
+                "save_actions": len(self.actions),
+                "ops_view": self.management_view() if self.s["starter"]["finished"] else None}
 
     def export_save(self):
-        payload = {"schema": 4, "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
+        payload = {"schema": 6, "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
                    "champions": self.champion_data["version"],
                    "mechanics": self.champion_data.get("revision", self.champion_data["version"]),
                    "effects": self.champion_data.get("effects_revision"), "vision": self.catalog.get("vision_revision"),
@@ -403,9 +451,9 @@ class Game(DraftRules, CampaignRules):
             expected = hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
             if checksum != expected:
                 raise ValueError("세이브 무결성 검사에 실패했습니다.")
-            if (data["schema"], data["engine"]) in ((1, "1.0.0"), (2, "2.0.0"), (3, "3.0.0")):
+            if (data["schema"], data["engine"]) in ((1, "1.0.0"), (2, "2.0.0"), (3, "3.0.0"), (4, "4.0.0"), (5, "5.0.0")):
                 return cls.migrate_legacy(text, catalog, champions)
-            if data["schema"] != 4 or data["engine"] != ENGINE_VERSION:
+            if data["schema"] != 6 or data["engine"] != ENGINE_VERSION:
                 raise ValueError("다른 버전의 세이브입니다.")
             if (data["dataset"] != catalog["version"] or data["champions"] != champions["version"]
                     or data.get("mechanics") != champions.get("revision", champions["version"])
@@ -431,7 +479,11 @@ class Game(DraftRules, CampaignRules):
     def migrate_legacy(cls, text, catalog, champions):
         # Replay with the unchanged v1 rules first. Never replace a user's earned roster.
         version = json.loads(text).get("engine")
-        if version == "3.0.0":
+        if version == "5.0.0":
+            from legacy_engine_v5 import Game as LegacyGame
+        elif version == "4.0.0":
+            from legacy_engine_v4 import Game as LegacyGame
+        elif version == "3.0.0":
             from legacy_engine_v3 import Game as LegacyGame
         elif version == "2.0.0":
             from legacy_engine_v2 import Game as LegacyGame
@@ -443,12 +495,24 @@ class Game(DraftRules, CampaignRules):
         candidate = cls(catalog, champions, old.seed)
         candidate.s = copy.deepcopy(old.s)
         candidate.initialize_campaign()
+        candidate.initialize_management()
         candidate.s.setdefault("banpick", None)
+        candidate.s.setdefault("summoner_loadouts", copy.deepcopy(SUMMONER_DEFAULTS))
         if "starter" not in candidate.s:
             candidate.s["starter"] = {"finished": True, "packs": {
                 r: {"league": "any", "year": "any", "card": old.s["roster"][r]} for r in ROLES}}
-        candidate.s["notice"] = "기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 성장·컨디션·유물·시너지를 적용합니다."
+        candidate.s["notice"] = ("기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 주간 운영·특성·전략 상성을 적용합니다."
+                                 if version == "5.0.0" else
+                                 "기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 성장·컨디션·유물·시너지를 적용합니다.")
         candidate.rng.state = old.rng.state
+        season = candidate.s.get("season")
+        if season and not candidate.s["management"]["meta"]:
+            # Deterministic: migration replays from the same legacy save and RNG state on every import.
+            season.setdefault("division", 0)
+            for team in season["teams"][1:]:
+                team["style"] = team.get("style") or candidate.rng.pick(list(AI_STYLES))
+            season["teams"][0].setdefault("style", None)
+            candidate.setup_season_management()
         candidate.legacy_save = text
         # In-flight v1 matches finish under v1 rules; future matches use the new engine.
         candidate.match = old.match

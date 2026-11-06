@@ -34,7 +34,12 @@ RED = BASE.units(BASE.s["season"]["teams"][1]["roster"])
 
 
 def match(seed=17):
-    return Match(copy.deepcopy(BLUE), copy.deepcopy(RED), seed, CHAMPS["champions"])
+    m = Match(copy.deepcopy(BLUE), copy.deepcopy(RED), seed, CHAMPS["champions"])
+    # Unit mechanics fixtures start deployed. Movement itself has dedicated v5 tests.
+    for team in m.s["teams"]:
+        for u in team:
+            u.update(pos=u["destination"][:], route=[], moving=False)
+    return m
 
 
 def champion(m, side, role, cid):
@@ -65,6 +70,8 @@ class CombatTests(unittest.TestCase):
         self.assertEqual([len(m.lane_members(i, "bot")) for i in (0,1)], [2,2])
         m.start_roam(0)
         self.assertEqual([len(m.lane_members(i, "bot")) for i in (0,1)], [1,2])
+        self.assertNotIn(m.unit(0,"sup"), m.lane_members(0,"mid"))
+        m.unit(0,"sup")["pos"] = m.unit(0,"sup")["destination"][:]
         self.assertEqual([u["role"] for u in m.lane_members(0,"mid")], ["mid","sup"])
         m.start_roam(1)
         self.assertEqual([len(m.lane_members(i, "bot")) for i in (0,1)], [1,1])
@@ -95,10 +102,13 @@ class CombatTests(unittest.TestCase):
         m=match()
         self.assertFalse(m.farm_camp(0,1,"top"))
         m.s["time"]=90
+        from battlefield import CAMP_POINTS
+        m.unit(0,"jng")["pos"] = list(CAMP_POINTS[1]["top"])
         self.assertTrue(m.farm_camp(0,1,"top"))
         self.assertEqual(m.s["camps"][1]["top"],210)
         self.assertFalse(m.farm_camp(1,1,"top"))
         m.s["time"]=210
+        m.unit(1,"jng")["pos"] = list(CAMP_POINTS[1]["top"])
         self.assertTrue(m.farm_camp(1,1,"top"))
 
     def test_all_jungle_encounters_occur_and_ganks_reach_all_lanes(self):
@@ -111,18 +121,19 @@ class CombatTests(unittest.TestCase):
                 kinds.update(m.s["encounter_counts"])
                 e=m.s["last_encounter"]
                 if e and e["kind"]=="gank":lanes.add(e["lane"])
-        self.assertTrue({"jungle_duel","counterjungle","gank","invade"}.issubset(kinds), kinds)
+        self.assertTrue({"jungle_duel","gank","objective"}.issubset(kinds), kinds)
         self.assertEqual(lanes,{"top","mid","bot"})
 
     def test_solo_objective_has_duration_and_cannot_start_early(self):
         m=match()
         self.assertFalse(m.start_objective(0,"dragon",solo=True))
         m.s["time"]=300
+        m.unit(0,"jng")["pos"] = [66,66]
         self.assertTrue(m.start_objective(0,"dragon",solo=True))
         self.assertEqual(m.s["objective_attempt"]["roles"],["jng"])
         m.resolve_objective();self.assertEqual(m.s["dragons"],[0,0])
         m.s["time"]=328
-        rolls=iter([.99,0]);m.rng.random=lambda:next(rolls)
+        m.rng.random=lambda:0
         m.resolve_objective()
         self.assertEqual(m.s["dragons"],[1,0])
         self.assertEqual(m.s["next_dragon"],628)
@@ -187,6 +198,7 @@ class CombatTests(unittest.TestCase):
 
     def test_rare_ally_lifesave_requires_available_correct_skill(self):
         m=match();u=champion(m,0,"sup","Zilean");victim=m.unit(0,"bot")
+        victim["summoners"] = {}  # Isolate champion defenses from summoner defenses.
         m.s["time"]=400;victim["hp"]=5;m.rng.random=lambda:0
         self.assertEqual(m.protect(victim,100,[u,victim]),0)
         self.assertEqual(u["saves"],1)
@@ -284,7 +296,7 @@ class CombatTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=scratch) as folder:
             dest=Path(folder).resolve()
             self.assertTrue(dest.is_relative_to(scratch.resolve()))
-            for name in ("index.html","app.js","style.css","worker.js"):
+            for name in ("index.html","app.js","style.css","broadcast.css","ops.css","worker.js"):
                 (dest/name).write_bytes((ROOT/"web"/name).read_bytes())
             fingerprint_assets(dest)
             first={name:(dest/name).read_bytes() for name in ("app.js","index.html","style.css")}

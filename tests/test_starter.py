@@ -97,8 +97,14 @@ class StarterTests(unittest.TestCase):
         while not old.match.s["event"]:
             old.apply({"type": "tick", "steps": 3})
         migrated = Game.import_save(old.export_save(), CATALOG, CHAMPIONS)
-        for key in ("owned", "roster", "coins", "season", "draft"):
+        for key in ("owned", "roster", "coins", "draft"):
             self.assertEqual(old.s[key], migrated.s[key])
+        # Engine 6 only annotates the preserved season with AI styles and the division.
+        season = {k: v for k, v in migrated.s["season"].items() if k != "division"}
+        season["teams"] = [{k: v for k, v in team.items() if k != "style"} for team in season["teams"]]
+        self.assertEqual(old.s["season"], season)
+        self.assertTrue(all(team["style"] for team in migrated.s["season"]["teams"][1:]))
+        self.assertTrue(migrated.s["management"]["meta"])
         self.assertTrue(migrated.s["starter"]["finished"])
         self.assertEqual(old.match.s, migrated.match.s)
         migrated.apply({"type": "choose", "option": "vision"})

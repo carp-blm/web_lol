@@ -111,7 +111,7 @@ class MatchFeatures:
             self.add_report(title, info["summary"], info)
             self.add_highlight("teamfight" if large else "skirmish",title,info["summary"],result)
         # A low-health opponent creates an actual player-controlled lane kill chance.
-        if kind == "lane" and self.s["time"] >= self.s["next_lane_choice"] and not self.s["event"] and self.s["time"] < 1100:
+        if kind == "lane" and self.s["time"] >= self.s["next_lane_choice"] and not self.s["event"] and not self.s["followup"] and self.s["time"] < 1100:
             allies = [u for u in blue if self.present(u)]
             enemies = [u for u in red if self.present(u) and u["hp"] <= 60]
             if allies and enemies:

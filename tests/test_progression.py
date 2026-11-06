@@ -5,6 +5,11 @@ from test_engine import CATALOG, CHAMPIONS, ROOT, finish
 from engine import Game, Match, ROLES, Bridge
 from legacy_engine_v3 import Game as GameV3
 from progression import RELICS, synergy_groups
+from management import TRAITS
+
+
+def trait_choice(match):
+    return sum(TRAITS[t].get("choice", 0) for u in match.s["teams"][0] for t in u["traits"]) / 5
 
 
 def game(seed="growth-tests", cls=Game):
@@ -133,19 +138,20 @@ class ProgressionTests(unittest.TestCase):
         for _ in range(2):g.apply({"type":"buy_relic","relic":"2055"})
         g.apply({"type":"start"});event(g)
         before = copy.deepcopy(g.match.s["event"])
-        self.assertEqual(before["relic_bonus"], .04)
-        for o in before["options"]: self.assertEqual(o["chance"], round(min(.98,o["base_chance"]+.04),2))
+        bonus = round(.04 + trait_choice(g.match), 4)
+        self.assertAlmostEqual(before["relic_bonus"], bonus)
+        for o in before["options"]: self.assertEqual(o["chance"], round(min(.98,max(.05,o["base_chance"]+bonus)),2))
         time, rng = g.match.s["time"], g.match.rng.state
         g.apply({"type":"use_relic","relic":"2055"})
         after = g.match.s["event"]
-        for o in after["options"]: self.assertEqual(o["chance"], round(min(.98,o["base_chance"]+.16),2))
+        for o in after["options"]: self.assertEqual(o["chance"], round(min(.98,o["base_chance"]+bonus+.12),2))
         self.assertEqual(g.s["relics"]["2055"]["count"],1)
         snapshot = g.export_save()
         with self.assertRaises(ValueError):g.apply({"type":"use_relic","relic":"2055"})
         self.assertEqual(snapshot,g.export_save());self.assertEqual((time,rng),(g.match.s["time"],g.match.rng.state))
         self.assertEqual(g.view(),Game.import_save(snapshot,CATALOG,CHAMPIONS).view())
         g.apply({"type":"choose","option":"vision"});event(g)
-        self.assertEqual(g.match.s["event"]["relic_bonus"],.04)
+        self.assertAlmostEqual(g.match.s["event"]["relic_bonus"],bonus)
 
     def test_exclusive_relics_reject_purchase_reward_and_pending_elixir(self):
         for first, second in (("3089","3157"),("3157","3089"),("2140","2139"),("2139","2140")):
@@ -189,7 +195,7 @@ class ProgressionTests(unittest.TestCase):
             prepared=g.prepare_units(test)
             for i,u in enumerate(prepared):
                 self.assertEqual(bool(u["synergy"]),i<count)
-                self.assertEqual(u["ratings"]["combat"],min(99,u["permanent_ratings"]["combat"]+((count-1)*2 if i<count else 0)))
+                self.assertEqual(u["ratings"]["combat"],min(99,round(u["permanent_ratings"]["combat"]+((count-1)*2 if i<count else 0)+u["ops_mods"]["combat"],2)))
 
     def test_ward_stack_limit_and_no_double_reward(self):
         g=game()

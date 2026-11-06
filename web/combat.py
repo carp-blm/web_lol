@@ -195,7 +195,8 @@ class CombatRules:
         effects = spell.get("effects", {})
         if not self.offensive(spell):
             self.log("skill", f'{caster["name"]} · {self.skill_label(spell)}로 위치를 잡고 후속 시전을 준비합니다.', caster["side"], spell)
-            return {"caster": caster["role"], "skill": spell.get("id", spell["key"]), "hits": 0, "cc": []}
+            return {"caster": caster["role"], "caster_name": caster["name"], "side": caster["side"],
+                    "skill": spell.get("id", spell["key"]), "skill_name": spell["name"], "hits": 0, "cc": []}
         primary, reachable, targeting = self.select_combat_target(caster, living, spell, lane)
         targets = [primary] + [u for u in reachable if u is not primary] if effects.get("aoe") else [primary]
         targets = targets[:effects.get("max_targets", 5)]
@@ -219,6 +220,7 @@ class CombatRules:
             if caster["cc_until"] > self.s["time"]:
                 damage *= 1 - min(.6, caster["cc_strength"]*.15)
             damage *= .72 if caster["role"] == "sup" else 1
+            damage *= caster.get("combo_scale", 1)
             damage = self.protect(victim, damage, enemies, spell) if effects.get("damage", True) else 0
             actual_damage = round(min(victim["hp"], damage), 2)
             victim["hp"] = round(max(0, victim["hp"]-damage), 2)
@@ -261,9 +263,7 @@ class CombatRules:
                 friends, enemies = (blue, red) if side == 0 else (red, blue)
                 for u in friends:
                     spell = forced if turn == 0 and forced and u["side"] == 0 and u["role"] == forced.get("actor_role") else None
-                    cast = self.cast_attack(u, enemies, friends, lane, "aoe" if len(enemies)>2 else "cc", spell)
-                    if cast:
-                        info["casts"].append(cast)
+                    info["casts"].extend(self.execute_combo(u, enemies, friends, lane, spell))
         a, b = sum(self.strength(u) for u in blue), sum(self.strength(u) for u in red)
         side = 0 if a > b else 1
         info["advantage"] = side

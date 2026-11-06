@@ -10,8 +10,8 @@ import zipfile
 from pathlib import Path
 from build_data import ROOT
 
-PYTHON_FILES = ("engine.py", "progression.py", "match_features.py", "draft.py", "combat.py", "abilities.py", "legacy_engine.py", "legacy_engine_v2.py", "legacy_abilities_v2.py", "legacy_engine_v3.py", "legacy_combat_v3.py")
-FRONTEND_FILES = ("index.html", "app.js", "worker.js", "style.css")
+PYTHON_FILES = ("engine.py", "management.py", "battlefield.py", "summoners.py", "combos.py", "tournament.py", "progression.py", "match_features.py", "draft.py", "combat.py", "abilities.py", "legacy_engine.py", "legacy_engine_v2.py", "legacy_abilities_v2.py", "legacy_engine_v3.py", "legacy_combat_v3.py", "legacy_engine_v4.py", "legacy_engine_v5.py", "legacy_combat_v4.py", "legacy_draft_v4.py", "legacy_match_features_v4.py")
+FRONTEND_FILES = ("index.html", "app.js", "worker.js", "style.css", "broadcast.css", "ops.css")
 DATA_FILES = ("cards.json", "champions.json", "media.json")
 
 
@@ -26,7 +26,7 @@ def fingerprint_assets(dest):
     app = rewrite((dest / "app.js").read_text(encoding="utf8"), "worker.js")
     (dest / "app.js").write_text(app, encoding="utf8", newline="\n")
     html = (dest / "index.html").read_text(encoding="utf8")
-    for name in ("app.js", "style.css"):
+    for name in ("app.js", "style.css", "broadcast.css", "ops.css"):
         html = rewrite(html, name)
     (dest / "index.html").write_text(html, encoding="utf8", newline="\n")
 

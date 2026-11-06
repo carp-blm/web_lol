@@ -28,7 +28,11 @@ def finish_interactive(g):
 
 class MatchFeatureTests(unittest.TestCase):
     def match(self):
-        g=game();g.apply({"type":"start"});return g.match
+        g=game();g.apply({"type":"start"})
+        for team in g.match.s["teams"]:
+            for u in team:
+                u.update(pos=u["destination"][:], route=[], moving=False)
+        return g.match
 
     def test_single_and_area_attacks_log_actual_names_without_single_hit_count(self):
         m=self.match();caster=m.unit(0,"mid");target=m.unit(1,"mid")
@@ -70,6 +74,8 @@ class MatchFeatureTests(unittest.TestCase):
 
     def test_three_v_three_report_names_participants_and_stops_interactive_clock(self):
         m=self.match();m.s["interactive"]=True
+        for team in m.s["teams"]:
+            for u in team[:3]:u["pos"]=[50,50]
         m.encounter("teamfight","river",m.s["teams"][0][:3],m.s["teams"][1][:3],rounds=1)
         report=m.s["reports"][0]
         self.assertIn("3대3",report["title"])
@@ -85,7 +91,7 @@ class MatchFeatureTests(unittest.TestCase):
         self.assertEqual(attacker["kill_streak"],5)
         m.kill_unit(m.unit(1,"bot"),attacker,m.s["teams"][1])
         self.assertEqual(attacker["kill_streak"],0);self.assertEqual(attacker["peak_streak"],5)
-        self.assertIn("5연속 킬 종료",m.s["highlights"][-1]["detail"])
+        self.assertTrue(any("5연속 킬 종료" in h["detail"] for h in m.s["highlights"]))
         m.s["winner"]=0;m.finish_awards();award=copy.deepcopy(m.s["player_of_match"])
         self.assertEqual(award["card_id"],attacker["card_id"])
         m.finish_awards();self.assertEqual(m.s["player_of_match"],award)
@@ -108,10 +114,10 @@ class MatchFeatureTests(unittest.TestCase):
         self.assertEqual(m.s["last_encounter"]["kind"],"lane_finish")
         self.assertTrue(m.s["last_encounter"]["casts"])
 
-    def test_draft_six_bans_ten_unique_picks_and_opponent_uses_its_picks(self):
+    def test_draft_ten_bans_ten_unique_picks_and_opponent_uses_its_picks(self):
         g=game();draft(g);d=copy.deepcopy(g.s["banpick"])
-        self.assertEqual([len(b) for b in d["bans"]],[3,3])
-        self.assertEqual(len(g.draft_taken()),16)
+        self.assertEqual([len(b) for b in d["bans"]],[5,5])
+        self.assertEqual(len(g.draft_taken()),20)
         self.assertEqual(g.view(),Game.import_save(g.export_save(),CATALOG,CHAMPIONS).view())
         g.apply({"type":"start"})
         for side in (0,1):

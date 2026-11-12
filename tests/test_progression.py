@@ -58,8 +58,10 @@ class ProgressionTests(unittest.TestCase):
             g = game(); g.apply({"type": "start"}); g.match.s["time"] = 1800
             for u in g.match.s["teams"][0]:
                 u.update(kills=kills, deaths=3, assists=kills, cs=160, saves=0)
+            # Follow a starter with room to grow in combat; one already at its career peak cannot grow.
+            cid = next(g.s["roster"][r] for r in ROLES if g.stat_cap(g.s["roster"][r], "combat") - g.cards[g.s["roster"][r]]["ratings"]["combat"] >= 1)
             g.settle_progression(won)
-            reports.append(g.s["last_growth"][0])
+            reports.append(next(r for r in g.s["last_growth"] if r["card_id"] == cid))
         for previous, current in zip(reports, reports[1:]):
             self.assertGreater(current["mastery"], previous["mastery"])
             self.assertGreater(current["stats"]["combat"], previous["stats"]["combat"])

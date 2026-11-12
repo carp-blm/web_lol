@@ -3,19 +3,85 @@
   "upstream": "https://oracleselixir.com/tools/downloads",
   "public_folder": "https://drive.google.com/drive/folders/1gLSw0RLjBbtaNy0dgnGQDAZOHIgCe-HH",
   "permission_status": "unverified-redistribution",
-  "notes": "Official download page returned 403; public Drive files returned quota-exceeded HTML on 2026-10-16. Initial snapshot uses openly published CSV preservation copies. Original-to-mirror equality cannot be verified. No access-control or quota bypass is implemented.",
+  "notes": "2026-11-12: automatic downloads from the provider's public Drive folder returned 'Quota exceeded' for every file; no quota bypass is implemented. Files were downloaded manually by the maintainer from the provider's Drive folder (listed on oracleselixir.com/tools/downloads) and placed in data/raw/. Redistribution permission still requires review.",
   "years": {
+    "2014": {
+      "url": "https://drive.google.com/uc?export=download&id=12syQsRH2QnKrQZTQQ6G5zyVeTG2pAYvu",
+      "snapshot_url": "https://drive.google.com/file/d/12syQsRH2QnKrQZTQQ6G5zyVeTG2pAYvu/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2015": {
+      "url": "https://drive.google.com/uc?export=download&id=1qyckLuw0-hJM8XqFhlV9l1xAbr3H78T_",
+      "snapshot_url": "https://drive.google.com/file/d/1qyckLuw0-hJM8XqFhlV9l1xAbr3H78T_/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2016": {
+      "url": "https://drive.google.com/uc?export=download&id=1muyfpaIqk8_0BFkgLCWXDGNgWSXoPBwG",
+      "snapshot_url": "https://drive.google.com/file/d/1muyfpaIqk8_0BFkgLCWXDGNgWSXoPBwG/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2017": {
+      "url": "https://drive.google.com/uc?export=download&id=11fx3nNjSYB0X8vKxLAbYOrS2Bu6avm9A",
+      "snapshot_url": "https://drive.google.com/file/d/11fx3nNjSYB0X8vKxLAbYOrS2Bu6avm9A/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2018": {
+      "url": "https://drive.google.com/uc?export=download&id=1GsNetJQOMx0QJ6_FN8M1kwGvU_GPPcPZ",
+      "snapshot_url": "https://drive.google.com/file/d/1GsNetJQOMx0QJ6_FN8M1kwGvU_GPPcPZ/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2019": {
+      "url": "https://drive.google.com/uc?export=download&id=11eKtScnZcpfZcD3w3UrD7nnpfLHvj9_t",
+      "snapshot_url": "https://drive.google.com/file/d/11eKtScnZcpfZcD3w3UrD7nnpfLHvj9_t/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2020": {
+      "url": "https://drive.google.com/uc?export=download&id=1dlSIczXShnv1vIfGNvBjgk-thMKA5j7d",
+      "snapshot_url": "https://drive.google.com/file/d/1dlSIczXShnv1vIfGNvBjgk-thMKA5j7d/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2021": {
+      "url": "https://drive.google.com/uc?export=download&id=1fzwTTz77hcnYjOnO9ONeoPrkWCoOSecA",
+      "snapshot_url": "https://drive.google.com/file/d/1fzwTTz77hcnYjOnO9ONeoPrkWCoOSecA/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2022": {
+      "url": "https://drive.google.com/uc?export=download&id=1EHmptHyzY8owv0BAcNKtkQpMwfkURwRy",
+      "snapshot_url": "https://drive.google.com/file/d/1EHmptHyzY8owv0BAcNKtkQpMwfkURwRy/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
     "2023": {
       "url": "https://drive.google.com/uc?export=download&id=1XXk2LO0CsNADBB1LRGOV5rUpyZdEZ8s2",
-      "snapshot_url": "https://raw.githubusercontent.com/Ashalo/LOLAnalysis/main/2023_LoL_esports_match_data_from_OraclesElixir.csv",
-      "source_kind": "public-mirror",
-      "automatic_fetch": true
+      "snapshot_url": "https://drive.google.com/file/d/1XXk2LO0CsNADBB1LRGOV5rUpyZdEZ8s2/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
     },
     "2024": {
       "url": "https://drive.google.com/uc?export=download&id=1IjIEhLc9n8eLKeY-yh_YigKVWbhgGBsN",
-      "snapshot_url": "https://raw.githubusercontent.com/JianyunYe/League-of-Legends-data-analysis/main/2024_LoL_esports_match_data_from_OraclesElixir.csv",
-      "source_kind": "public-mirror",
-      "automatic_fetch": true
+      "snapshot_url": "https://drive.google.com/file/d/1IjIEhLc9n8eLKeY-yh_YigKVWbhgGBsN/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2025": {
+      "url": "https://drive.google.com/uc?export=download&id=1v6LRphp2kYciU4SXp0PCjEMuev1bDejc",
+      "snapshot_url": "https://drive.google.com/file/d/1v6LRphp2kYciU4SXp0PCjEMuev1bDejc/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
+    },
+    "2026": {
+      "url": "https://drive.google.com/uc?export=download&id=1hnpbrUpBMS1TZI7IovfpKeZfWJH1Aptm",
+      "snapshot_url": "https://drive.google.com/file/d/1hnpbrUpBMS1TZI7IovfpKeZfWJH1Aptm/view",
+      "source_kind": "provider-drive-manual",
+      "automatic_fetch": false
     }
   }
 }

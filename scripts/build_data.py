@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = ("top", "jng", "mid", "bot", "sup")
-FIELDS = "gameid league year date position playername playerid teamname teamid champion gamelength result kills deaths assists dpm cspm golddiffat15 vspm".split()
+FIELDS = "gameid league year date position playername playerid teamname teamid champion gamelength result kills deaths assists dpm cspm golddiffat15 vspm wpm wcpm".split()
 
 
 def read_json(path):
@@ -37,9 +37,24 @@ def num(value):
         return None
 
 
+def league_info(rules, league, year):
+    """Tier and region of a league code in a given year, or None when it does not count that year.
+    Version 1 rules list one entry per code for every year; version 2 lists periods per code."""
+    entry = rules["leagues"].get(league)
+    if entry is None or year is None:
+        return None
+    if isinstance(entry, dict):
+        return {"tier": entry["tier"], "region": entry["region"]}
+    for period in entry:
+        if period.get("from", 0) <= year <= period.get("to", 9999):
+            return {"tier": period["tier"], "region": period["region"]}
+    return None
+
+
 def eligible(row, rules):
-    return (row.get("position") in ROLES and row.get("league") in rules["leagues"]
-            and num(row.get("year")) in rules["years"]
+    year = num(row.get("year"))
+    return (row.get("position") in ROLES and year in rules["years"]
+            and league_info(rules, row.get("league"), int(year)) is not None
             and all(row.get(k, "").strip() for k in ("gameid", "playerid", "playername", "teamid", "teamname", "champion"))
             and (num(row.get("gamelength")) or 0) > 0
             and row.get("result") in ("0", "1", "0.0", "1.0"))
@@ -101,9 +116,25 @@ FORM_STEP = 2
 
 
 def raw_metrics(rows):
-    return {"lane": mean(rows, "golddiffat15"),
-            "combat": mean(rows, "dpm") + 50 * (mean(rows, "kills") + mean(rows, "assists")) / max(1, mean(rows, "deaths")),
-            "vision": mean(rows, "vspm"), "farm": mean(rows, "cspm")}
+    """None when no game in the rows recorded the field (older seasons lack 15-minute and vision
+    data for some leagues); such a stat is rated neutral instead of last."""
+    combat = mean(rows, "dpm", None)
+    score = [n for n in (num(r.get("vspm")) for r in rows) if n is not None and n > 0]
+    wards = mean(rows, "wpm", None)
+    return {"lane": mean(rows, "golddiffat15", None),
+            "combat": None if combat is None else combat + 50 * (mean(rows, "kills") + mean(rows, "assists")) / max(1, mean(rows, "deaths")),
+            "vision": sum(score) / len(score) if score else None, "farm": mean(rows, "cspm", None),
+            # Before vision score was tracked (most leagues until 2017-2018): wards placed + cleared per minute.
+            "vision_wards": None if wards is None else wards + mean(rows, "wcpm", 0)}
+
+
+NEUTRAL = 70
+VISION_SCORE_SHARE = .6     # a season/role cohort uses vision score when at least this share of its cards have it
+
+
+def vision_key(cohort):
+    have = sum(1 for c in cohort if c["raw_metrics"]["vision"] is not None)
+    return "vision" if have >= VISION_SCORE_SHARE * len(cohort) else "vision_wards"
 
 
 def cohort_percentile(sorted_values, value):
@@ -124,9 +155,11 @@ def career_ranges(cards, rows_by_card, cohort_values):
         for start in range(0, len(rows) - FORM_WINDOW + 1, FORM_STEP):
             window = rows[start:start + FORM_WINDOW]
             metrics = raw_metrics(window)
+            metrics["vision"] = metrics[scale["vision_key"]]
             weight = len(window) / (len(window) + 12)
-            entry["points"].append({m: round(card["ratings"][m] + (70 + (cohort_percentile(scale[m], metrics[m]) - .5) * 44
-                                                                   - card["ratings"][m]) * weight) for m in STATS})
+            entry["points"].append({m: card["ratings"][m] if metrics[m] is None or not scale[m] else
+                                    round(card["ratings"][m] + (NEUTRAL + (cohort_percentile(scale[m], metrics[m]) - .5) * 44
+                                                                - card["ratings"][m]) * weight) for m in STATS})
     out = {}
     for pid, entry in sorted(players.items()):
         points = entry["points"]
@@ -187,7 +220,7 @@ def build(seed=None):
         card = {"id": hashlib.sha256("|".join(map(str, key)).encode()).hexdigest()[:20],
                 "player_id": pid, "name": recent["playername"], "team": recent["teamname"],
                 "team_id": tid, "year": year, "role": role, "league": league,
-                **rules["leagues"][league], "games": len(rows), "raw_metrics": raw,
+                **league_info(rules, league, year), "games": len(rows), "raw_metrics": raw,
                 "win_rate": round(mean(rows, "result"), 4),
                 "evidence": {"first_game": rows[0]["gameid"], "last_game": recent["gameid"],
                              "first_date": rows[0]["date"], "last_date": recent["date"],
@@ -203,14 +236,19 @@ def build(seed=None):
         cohorts[(year, role)].append(card)
     cohort_values = {}
     for cohort_key, cohort in cohorts.items():
+        cohort_values.setdefault(cohort_key, {})["vision_key"] = vision = vision_key(cohort)
         for metric in ("lane", "combat", "vision", "farm"):
-            vals = sorted(c["raw_metrics"][metric] for c in cohort)
-            cohort_values.setdefault(cohort_key, {})[metric] = vals
+            source = vision if metric == "vision" else metric
+            vals = sorted(c["raw_metrics"][source] for c in cohort if c["raw_metrics"][source] is not None)
+            cohort_values[cohort_key][metric] = vals
             for c in cohort:
-                v = c["raw_metrics"][metric]
+                v = c["raw_metrics"][source]
+                if v is None or not vals:
+                    c.setdefault("ratings", {})[metric] = NEUTRAL
+                    continue
                 percentile = cohort_percentile(vals, v)
                 reliability = c["games"] / (c["games"] + 12)
-                c.setdefault("ratings", {})[metric] = round(70 + (percentile - .5) * 44 * reliability)
+                c.setdefault("ratings", {})[metric] = round(NEUTRAL + (percentile - .5) * 44 * reliability)
         for c in cohort:
             c["overall"] = round(sum(c["ratings"].values()) / 4)
             c.pop("raw_metrics")

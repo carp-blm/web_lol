@@ -33,13 +33,35 @@ class DataTests(unittest.TestCase):
         for field,value in (("league","UNKNOWN"),("position","team"),("playerid",""),("gameid",""),("gamelength","0"),("result",""),("year","2012")):
             self.assertFalse(eligible({**row,field:value},self.rules))
 
-    def test_dual_year_global_and_second_tier_coverage(self):
-        self.assertEqual(self.data["coverage"]["years"],[2023,2024])
-        self.assertGreater(self.data["coverage"]["cards"],3000)
-        self.assertIn("LCKC",self.data["coverage"]["leagues"])
-        self.assertIn("LDL",self.data["coverage"]["leagues"])
-        self.assertIn("CBLOL",self.data["coverage"]["leagues"])
-        self.assertGreaterEqual(len(self.data["coverage"]["leagues"]),15)
+    def test_all_years_global_and_second_tier_coverage(self):
+        self.assertEqual(self.data["coverage"]["years"],list(range(2014,2027)))
+        self.assertGreater(self.data["coverage"]["cards"],20000)
+        for league in ("LCKC","LDL","CBLOL","EU LCS","NA LCS","LMS","LCP","LTA N","LTA S"):
+            self.assertIn(league,self.data["coverage"]["leagues"])
+        self.assertGreaterEqual(len(self.data["coverage"]["leagues"]),30)
+        for year in range(2014,2027):
+            self.assertTrue(any(c["year"]==year for c in self.data["cards"]))
+
+    def test_league_codes_count_only_in_their_years(self):
+        from build_data import league_info
+        self.assertEqual(league_info(self.rules,"LCS",2015),None)
+        self.assertEqual(league_info(self.rules,"LCS",2025),None)
+        self.assertEqual(league_info(self.rules,"LCS",2026)["tier"],1)
+        self.assertEqual(league_info(self.rules,"PCS",2024)["tier"],1)
+        self.assertEqual(league_info(self.rules,"PCS",2025)["tier"],2)
+        self.assertEqual(league_info(self.rules,"EU LCS",2019),None)
+        for c in self.data["cards"]:
+            self.assertEqual(league_info(self.rules,c["league"],c["year"])["tier"],c["tier"])
+
+    def test_old_seasons_rate_vision_from_wards(self):
+        from build_data import raw_metrics
+        rows=[{"vspm":"0","wpm":"0.5","wcpm":"0.2","dpm":"400","kills":"2","assists":"3","deaths":"1","cspm":"8","golddiffat15":""}]
+        metrics=raw_metrics(rows)
+        self.assertIsNone(metrics["vision"]); self.assertIsNone(metrics["lane"])
+        self.assertAlmostEqual(metrics["vision_wards"],.7)
+        for year in (2014,2015,2016,2017):
+            cards=[c for c in self.data["cards"] if c["year"]==year]
+            self.assertGreater(len({c["ratings"]["vision"] for c in cards}),20)
 
     def test_stats_and_mastery_are_bounded(self):
         for c in self.data["cards"]:

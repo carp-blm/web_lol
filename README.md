@@ -34,18 +34,18 @@ python scripts/serve.py
 
 ## 이번 버전의 실제 데이터 범위
 
-- **2023·2024년, 19개 리그, 선수 카드 3,835장, 출전 행 121,921건**.
+- **2014~2026년(2026-11-12 기준), 39개 리그 코드, 선수 카드 22,337장(1군 10,202 / 2군 12,135), 출전 행 636,347건**. 2026년은 월즈까지 반영된 그날의 원본입니다.
 - 선수 × 연도 × 소속 팀 × 출전 포지션 단위 카드입니다. 이적 전후 구단은 별도 카드입니다.
 - Oracle's Elixir `playerid`, `gameid`, `teamid`, `position`, 양수 `gamelength`, 유효한 `result`가 있는 실제 출전 행만 사용합니다. 명단만 있는 후보 선수·코치·팀 집계 행은 생성하지 않습니다.
 - 1/2군 구분은 **대회 단계** 기준입니다. 2군은 1군 산하 아카데미뿐 아니라 해당 2부 리그 독립 구단도 포함합니다. 리그 허용 목록은 `data/league_tiers.json`에서 연도와 함께 관리합니다. 미확인 리그, 아마추어 대회, 혼합 컵 대회는 제외합니다.
-- 포함 리그: LCK, LCKC, LPL, LDL, LEC, LCS, NACL, PCS, VCS, LJL, CBLOL, CBLOLA, LLA, LCO, LFL, PRM, LVP SL, TCL, NLC.
-- 모든 연도·모든 지역의 완전한 수록을 주장하지 않습니다. 2014~2022 및 2025 이후는 원본과 리그 분류를 추가하여 확장할 수 있습니다.
-- 공식 다운로드 페이지는 작업 시 403, 공개 Drive는 할당량 초과 HTML을 반환했습니다. 접근 제한을 우회하지 않았습니다. 초기 데이터는 별도 공개된 2023/2024 CSV 보존본에서 추출했습니다. 보존본의 출전 행과 카드는 교차 검증했지만 **원본과 보존본의 완전 일치, 재배포 이용권한은 미검증**입니다.
+- 포함 리그(2023·2024 목록과 각 리그의 이전·이후 이름): LCK(2015년 OGN), CK→LCKC, LPL, LSPL→LDL, EU LCS→LEC, EU CS, LFL, PRM, SLO→LVP SL, TCL, UKLC→NLC, NA LCS→LCS(2025년 LTA N, 2026년 LCS 복귀), NA CS→LCSA→NACL, CBLOL(2025년 LTA S), CBLOLA→CD, CLS·LLN→LLA, OPL→LCO, LMS·GPL→PCS, LCP(2025~), LJL, VCS. 같은 코드도 해당 연도에만 인정합니다(예: 2025년부터 PCS·LJL·VCS는 LCP 아래 2군).
+- 국제 대회(MSI·월즈 등), 그 밖의 유럽 지역 리그와 2부 컵 대회는 제외합니다. 모든 지역의 완전한 수록을 주장하지 않습니다.
+- 2026-11-12 갱신: Oracle's Elixir 공식 Drive 폴더의 연도별 원본 13개를 사용했습니다. 자동 다운로드는 할당량 초과로 막혀 관리자가 직접 받았고, 접근 제한은 우회하지 않았습니다. **재배포 이용권한은 미검증**입니다. 원본 갱신으로 일부 팀의 `teamid`가 바뀌어 이전 데이터의 카드 3,835장 중 562장은 새 ID의 카드로 대체되었습니다.
 - 각 원본 파일 SHA-256, 공개 보존본 URL, 제외된 리그별 행 수는 `data/seed/provenance.json` 및 화면의 **데이터 & 출처**에 남깁니다. 카드마다 최초/최종 경기 ID·날짜를 확인할 수 있습니다.
 
 ### 능력치와 숙련도
 
-연도·포지션별 분포에서 라인전(`golddiffat15`), 전투(`dpm` + KDA 보정), 시야(`vspm`), 성장(`cspm`) 백분위를 구한 뒤 출전 수가 적으면 평균 70 쪽으로 축소합니다. 누락 지표는 0으로 대체하므로 특히 지표가 누락된 리그의 점수에는 한계가 있습니다. OVR은 네 능력치 평균입니다. 지역 간 대회 난도 보정이나 실제 선수의 잠재력 평가는 아닙니다.
+연도·포지션별 분포에서 라인전(`golddiffat15`), 전투(`dpm` + KDA 보정), 시야(`vspm`), 성장(`cspm`) 백분위를 구한 뒤 출전 수가 적으면 평균 70 쪽으로 축소합니다. 시야 점수가 없던 시기(연도·포지션 집단의 60% 미만이 기록)는 분당 와드 설치+제거(`wpm`+`wcpm`)로 시야를 매깁니다. 지표가 기록되지 않은 카드의 해당 능력치는 중립값 70입니다(예: 15분 골드 차가 없는 리그의 라인전). OVR은 네 능력치 평균입니다. 지역 간 대회 난도 보정이나 실제 선수의 잠재력 평가는 아닙니다.
 
 챔피언 숙련도는 카드별 출전 횟수와 스무딩한 승률의 함수입니다. Riot 계정 숙련도와 관계없습니다. 모든 선수 연도에 공통 경기 규칙/현재 고정 챔피언 스냅샷을 사용합니다. 해당 연도의 실제 게임 패치를 재현하지 않습니다.
 
@@ -191,7 +191,7 @@ python -m unittest discover -s tests -v
 python scripts/build_site.py
 ```
 
-원본을 합법적으로 다운로드해 `data/raw/2023.csv`, `data/raw/2024.csv` 등에 넣었다면:
+원본을 합법적으로 다운로드해 `data/raw/2014.csv` ~ `data/raw/2026.csv`처럼 연도 이름으로 넣었다면:
 
 ```powershell
 python scripts/build_data.py --raw-dir data/raw
@@ -259,8 +259,7 @@ Node는 JS 문법 검사에만 선택적으로 필요합니다. 게임 실행과
 ## 참고
 
 - [Oracle's Elixir](https://oracleselixir.com/tools/downloads)
-- [2023 CSV 공개 보존본](https://github.com/Ashalo/LOLAnalysis)
-- [2024 CSV 공개 보존본](https://github.com/JianyunYe/League-of-Legends-data-analysis)
+- [Oracle's Elixir 공개 Drive 폴더](https://drive.google.com/drive/folders/1gLSw0RLjBbtaNy0dgnGQDAZOHIgCe-HH)
 - [Riot Data Dragon](https://developer.riotgames.com/docs/lol#data-dragon)
 - [Riot IP 정책](https://www.riotgames.com/en/legal)
 - [Pyodide Web Worker](https://pyodide.org/en/stable/usage/webworker.html)

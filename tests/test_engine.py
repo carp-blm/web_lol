@@ -197,7 +197,20 @@ class EngineTests(unittest.TestCase):
             self.assertTrue(all(0<=n<=3 for ts in m.s["towers"] for n in ts.values()))
             self.assertTrue(all(2<=len(c) for c in [m.s["decisions"]]))
         self.assertGreater(len(set(durations)),80)
-        self.assertEqual(winners,{0,1})
+        # 7.0 siege converts a lead into structures, so this +9 OVR starter roster no longer drops seeds.
+        # "No preselected winner" is checked across the AI rosters, each pairing playing both sides.
+        teams=g.s["season"]["teams"];rosters={i:g.units(teams[i]["roster"]) for i in range(1,6)}
+        sides=set();contested=0
+        for a in range(1,6):
+            for b in range(a+1,6):
+                victors=set()
+                for seed in range(1,7):
+                    for pair in ((a,b),(b,a)):
+                        m=Match(copy.deepcopy(rosters[pair[0]]),copy.deepcopy(rosters[pair[1]]),seed,g.champions)
+                        side=m.simulate();sides.add(side);victors.add(pair[side])
+                contested+=len(victors)==2
+        self.assertEqual(sides,{0,1})
+        self.assertGreaterEqual(contested,3)
         print(f"\n100 seeded matches: {min(durations)//60}-{max(durations)//60} minutes; median {statistics.median(durations)/60:.1f}; both sides can win")
 
 

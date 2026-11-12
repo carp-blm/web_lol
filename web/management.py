@@ -1,4 +1,6 @@
-"""Engine 6 team operations: the manager's week between matches.
+"""Engine 6/7 team operations: the manager's week between matches.
+
+Engine 7 adds career ranges: growth stops at the player's peak; match ratings never go below the floor.
 
 Weekly training, stamina and morale, deterministic player traits, game plans with a
 counter cycle, AI team identities and scouting, a seasonal patch meta, sponsor
@@ -149,6 +151,19 @@ class ManagementRules:
     def division(self):
         return DIVISIONS[self.ops["division"]]
 
+    # ---- career range (engine 7) ------------------------------------------------------------
+    def career_range(self, cid):
+        """Peak and floor per stat from every season card and form window of this player."""
+        card = self.cards[cid]
+        entry = self.catalog.get("players", {}).get(card["player_id"])
+        if not entry:
+            return {"peak": dict.fromkeys(STATS, 99), "floor": dict.fromkeys(STATS, 1)}
+        return entry
+
+    def stat_cap(self, cid, stat):
+        # Development can lift any season's card to the player's career peak, never beyond it.
+        return max(self.cards[cid]["ratings"][stat], self.career_range(cid)["peak"][stat])
+
     def stamina(self, cid):
         return self.ops["stamina"].get(cid, 100)
 
@@ -203,6 +218,8 @@ class ManagementRules:
         for unit in units:
             cid = unit["card_id"]
             unit["traits"] = self.traits(cid)
+            career = self.career_range(cid)
+            unit["peak"], unit["floor"] = dict(career["peak"]), dict(career["floor"])
             unit["meta"] = None
             ratings = unit["ratings"]
             start = dict(ratings)
@@ -342,9 +359,10 @@ class ManagementRules:
             if info.get("stat"):
                 stat = info["stat"]
                 current = self.permanent_ratings(cid)[stat]
-                gain = round(min(99-current, TRAINING_GAIN*efficiency), 2)
+                cap = self.stat_cap(cid, stat)
+                gain = round(max(0, min(cap-current, TRAINING_GAIN*efficiency)), 2)
                 progress["stats"][stat] = round(progress["stats"][stat]+gain, 2)
-                row.update(stat=stat, gain=gain)
+                row.update(stat=stat, gain=gain, peak=cap, at_peak=current+gain >= cap)
             elif focus == "champion":
                 champion = plan.get("champion") if plan.get("champion") in self.champions else self.default_practice(cid)
                 raw = next((p["mastery"] for p in self.champion_pool(self.cards[cid]) if p["id"] == champion), 35)

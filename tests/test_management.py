@@ -68,7 +68,7 @@ class PlanTests(unittest.TestCase):
             self.assertEqual(u["plan"]["counter"], 1)
             p = preview[u["card_id"]]
             for stat, value in p["ratings"].items():
-                self.assertEqual(u["ratings"][stat], round(max(1, min(99, value + u["condition"]["modifier"])), 2))
+                self.assertEqual(u["ratings"][stat], max(u["floor"][stat], round(max(1, min(99, value + u["condition"]["modifier"])), 2)))
         for u in g.match.s["teams"][1]:
             self.assertEqual(u["plan"], {"id": scout["style"], "enemy": scout["suggested"], "counter": -1})
 

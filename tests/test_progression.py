@@ -45,7 +45,7 @@ class ProgressionTests(unittest.TestCase):
         conditions = [u["condition"] for t in g.match.s["teams"] for u in t]
         self.assertGreater(len({c["modifier"] for c in conditions}), 1)
         for u, preview in zip(g.match.s["teams"][0], lineup(g)):
-            expected = min(99, max(1, preview["ratings"]["combat"]+u["condition"]["modifier"]))
+            expected = max(u["floor"]["combat"], min(99, max(1, preview["ratings"]["combat"]+u["condition"]["modifier"])))
             self.assertEqual(u["ratings"]["combat"], expected)
         for _ in range(3): g.view()
         g.apply({"type": "tick", "steps": 10})

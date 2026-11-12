@@ -157,3 +157,29 @@
   .ladder-arrow{display:none}
 }
 @media(prefers-reduced-motion:reduce){.stamina i{transition:none}}
+
+/* Engine 7 career range: floor–peak bar per stat. */
+.career-ratings span{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 6px}
+.career-ratings b{margin-left:auto}
+.career-bar{flex:1 0 100%;height:4px;border-radius:2px;background:#0f171c;border:1px solid var(--line);overflow:hidden;display:block}
+.career-bar em{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--lime))}
+.career-ratings small{flex:1 0 100%;font-size:9px;color:#6f8790}
+.peak-room{display:block;font-size:10px;color:var(--cyan);margin-top:4px}
+.peak-room.done{color:var(--gold)}
+.career-details .career-season{border-top:1px solid var(--line);padding:5px 0;font-size:10px}
+.career-details .career-season.current{color:var(--lime)}
+
+/* Engine 7 pressure / resolve / clutch in the arena. */
+.pressure-row{display:flex;align-items:center;gap:6px;margin:4px 0 2px}
+.pressure-bar{flex:1;height:4px;border-radius:2px;background:#0f171c;overflow:hidden}
+.pressure-bar i{display:block;height:100%;background:linear-gradient(90deg,#6b5a2a,var(--warn));transition:width .4s}
+.pressure-bar.high i{background:linear-gradient(90deg,var(--warn),var(--red))}
+.pressure-label{font-size:9px;color:var(--muted);white-space:nowrap}
+.resolve-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap}
+.resolve-badge.awakened{background:var(--gold);color:#0d1318;box-shadow:0 0 8px rgba(226,194,122,.6)}
+.resolve-badge.shaken{background:#3a2222;color:var(--red);border:1px solid #6e3434}
+.map-unit.awakened{filter:drop-shadow(0 0 6px var(--gold))}
+.map-unit.shaken{filter:grayscale(.6)}
+.log-clutch{color:var(--gold);font-weight:700}
+.log-resolve{color:#d9c7a0}
+@media(prefers-reduced-motion:reduce){.pressure-bar i{transition:none}}

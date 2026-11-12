@@ -70,6 +70,9 @@ class ProgressionMatchRules:
                 applied = max(delta, unit.get("condition_floor", -6))
                 unit["condition"] = {"label": label, "rolled": delta, "modifier": applied}
                 unit["ratings"] = {k: round(bound(v+applied, 1, 99), 2) for k, v in unit["ratings"].items()}
+                # Engine 7: no condition or penalty pushes a stat below the player's career floor.
+                if unit.get("floor"):
+                    unit["ratings"] = {k: max(unit["floor"][k], v) for k, v in unit["ratings"].items()}
                 unit["overall"] = round(sum(unit["ratings"].values()) / 4, 2)
 
     def make_event(self):
@@ -94,9 +97,13 @@ class CampaignRules:
         for key, value in defaults.items():
             self.s.setdefault(key, value)
 
+    def stat_cap(self, cid, stat):
+        """Highest permanent value growth may reach. Engine 7 overrides this with the career peak."""
+        return 99
+
     def permanent_ratings(self, cid):
         growth = self.s["progression"].get(cid, {}).get("stats", {})
-        return {k: round(bound(v+growth.get(k, 0), 1, 99), 2) for k, v in self.cards[cid]["ratings"].items()}
+        return {k: round(bound(v+growth.get(k, 0), 1, max(v, self.stat_cap(cid, k))), 2) for k, v in self.cards[cid]["ratings"].items()}
 
     def prepare_units(self, units, campaign=False):
         groups = synergy_groups(units)
@@ -228,7 +235,7 @@ class CampaignRules:
             for stat in STATS:
                 extra = min(.20, unit["saves"]*.04 + unit["assists"]*.005) if stat == "vision" else min(.20, farm*.08) if stat == "farm" else min(.20, involvement*.025) if stat == "combat" else 0
                 before = self.permanent_ratings(cid)[stat]
-                delta = round(min(99-before, (base+extra)*(1+unit.get("growth_bonus", 0))), 2)
+                delta = round(max(0, min(self.stat_cap(cid, stat)-before, (base+extra)*(1+unit.get("growth_bonus", 0)))), 2)
                 progress["stats"][stat] = round(progress["stats"][stat]+delta, 2)
                 deltas[stat] = delta
             raw_mastery = next((p["mastery"] for p in self.champion_pool(self.cards[cid]) if p["id"] == champion), 35)

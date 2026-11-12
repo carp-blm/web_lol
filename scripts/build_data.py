@@ -95,6 +95,48 @@ def mean(rows, key, default=0):
     return sum(values) / len(values) if values else default
 
 
+STATS = ("lane", "combat", "vision", "farm")
+FORM_WINDOW = 10
+FORM_STEP = 2
+
+
+def raw_metrics(rows):
+    return {"lane": mean(rows, "golddiffat15"),
+            "combat": mean(rows, "dpm") + 50 * (mean(rows, "kills") + mean(rows, "assists")) / max(1, mean(rows, "deaths")),
+            "vision": mean(rows, "vspm"), "farm": mean(rows, "cspm")}
+
+
+def cohort_percentile(sorted_values, value):
+    return (bisect.bisect_left(sorted_values, value) + bisect.bisect_right(sorted_values, value)) / (2 * len(sorted_values))
+
+
+def career_ranges(cards, rows_by_card, cohort_values):
+    """Per player and stat: highest (peak) and lowest (floor) point across every season card
+    and every 10-game form window inside a season. A window is rated on the same season/role
+    scale and shrunk toward that season's card by games/(games+12), so short streaks count less."""
+    players = collections.defaultdict(lambda: {"points": [], "seasons": []})
+    for card in cards:
+        entry = players[card["player_id"]]
+        entry["points"].append(card["ratings"])
+        entry["seasons"].append((card["year"], card["id"]))
+        rows = rows_by_card[card["id"]]
+        scale = cohort_values[(card["year"], card["role"])]
+        for start in range(0, len(rows) - FORM_WINDOW + 1, FORM_STEP):
+            window = rows[start:start + FORM_WINDOW]
+            metrics = raw_metrics(window)
+            weight = len(window) / (len(window) + 12)
+            entry["points"].append({m: round(card["ratings"][m] + (70 + (cohort_percentile(scale[m], metrics[m]) - .5) * 44
+                                                                   - card["ratings"][m]) * weight) for m in STATS})
+    out = {}
+    for pid, entry in sorted(players.items()):
+        points = entry["points"]
+        seasons = [cid for _, cid in sorted(entry["seasons"])]
+        out[pid] = {"peak": {m: max(p[m] for p in points) for m in STATS},
+                    "floor": {m: min(p[m] for p in points) for m in STATS},
+                    "form_points": len(points), "cards": seasons}
+    return out
+
+
 def media_record(key, year, team, kind, overrides):
     base = {"key": key, "year": year, "team": team, "kind": kind, "source_url": None,
             "rights_holder": None, "permission": "unknown", "permission_evidence": None,
@@ -135,14 +177,12 @@ def build(seed=None):
         groups[key].append(row)
     if not groups:
         raise ValueError("No official appearances found. Existing JSON has not been changed.")
-    cards, cohorts = [], collections.defaultdict(list)
+    cards, cohorts, rows_by_card = [], collections.defaultdict(list), {}
     for key, rows in sorted(groups.items()):
         year, pid, tid, role = key
         rows.sort(key=lambda r: (r["date"], r["gameid"]))
         recent = rows[-1]
-        raw = {"lane": mean(rows, "golddiffat15"),
-               "combat": mean(rows, "dpm") + 50 * (mean(rows, "kills") + mean(rows, "assists")) / max(1, mean(rows, "deaths")),
-               "vision": mean(rows, "vspm"), "farm": mean(rows, "cspm")}
+        raw = raw_metrics(rows)
         league = recent["league"]
         card = {"id": hashlib.sha256("|".join(map(str, key)).encode()).hexdigest()[:20],
                 "player_id": pid, "name": recent["playername"], "team": recent["teamname"],
@@ -159,18 +199,22 @@ def build(seed=None):
                             "value": min(95, round(42 + 40 * len(rs) / (len(rs) + 8) + 14 * (sum(float(r["result"]) for r in rs) + 2) / (len(rs) + 4)))}
                            for name, rs in sorted(champs.items(), key=lambda p: (-len(p[1]), p[0]))]
         cards.append(card)
+        rows_by_card[card["id"]] = rows
         cohorts[(year, role)].append(card)
-    for cohort in cohorts.values():
+    cohort_values = {}
+    for cohort_key, cohort in cohorts.items():
         for metric in ("lane", "combat", "vision", "farm"):
             vals = sorted(c["raw_metrics"][metric] for c in cohort)
+            cohort_values.setdefault(cohort_key, {})[metric] = vals
             for c in cohort:
                 v = c["raw_metrics"][metric]
-                percentile = (bisect.bisect_left(vals, v) + bisect.bisect_right(vals, v)) / (2 * len(vals))
+                percentile = cohort_percentile(vals, v)
                 reliability = c["games"] / (c["games"] + 12)
                 c.setdefault("ratings", {})[metric] = round(70 + (percentile - .5) * 44 * reliability)
         for c in cohort:
             c["overall"] = round(sum(c["ratings"].values()) / 4)
             c.pop("raw_metrics")
+    players = career_ranges(cards, rows_by_card, cohort_values)
     if any(not any(c["role"] == r for c in cards) for r in ROLES):
         raise ValueError("Data must cover all five positions")
     version = hashlib.sha256((seed.read_bytes() + json.dumps(rules, sort_keys=True).encode())).hexdigest()[:16]
@@ -186,7 +230,8 @@ def build(seed=None):
         c["team_media_key"] = team_key
         media[team_key] = media_record(team_key, c["year"], c["team"], "logo", overrides)
     provenance = read_json(ROOT / "data/seed/provenance.json")
-    write_json(ROOT / "web/data/cards.json", {"schema": 1, "version": version, "cards": cards,
+    write_json(ROOT / "web/data/cards.json", {"schema": 1, "version": version, "cards": cards, "players": players,
+        "range_revision": f"form-window-{FORM_WINDOW}-step-{FORM_STEP}",
         "vision_revision": supplement.get("revision", "unavailable"),
         "coverage": {"years": sorted({c["year"] for c in cards}), "leagues": sorted({c["league"] for c in cards}),
                      "tiers": dict(collections.Counter(str(c["tier"]) for c in cards)), "cards": len(cards),

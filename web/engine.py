@@ -15,10 +15,13 @@ from tournament import DraftRules
 from battlefield import BattlefieldRules
 from summoners import SummonerRules, CATALOG as SUMMONERS, DEFAULTS as SUMMONER_DEFAULTS
 from combos import ComboRules
+from clutch import ClutchRules
+from siege import SiegeRules
+from teamfight import TeamfightRules, SustainedComboRules
 from management import ManagementRules, DIVISIONS, AI_STYLES, plan_counter
 from legacy_engine_v2 import Match as PreviousMatch
 
-ENGINE_VERSION = "6.0.0"
+ENGINE_VERSION = "7.0.0"
 ROLES = ("top", "jng", "mid", "bot", "sup")
 LANES = ("top", "mid", "bot")
 ROLE_NAMES = {"top": "탑", "jng": "정글", "mid": "미드", "bot": "바텀", "sup": "서포터"}
@@ -58,13 +61,14 @@ def normalize(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-class Match(BattlefieldRules, SummonerRules, ComboRules, MatchFeatures, ProgressionMatchRules, CombatRules, AbilityRules, PreviousMatch):
+class Match(ClutchRules, SiegeRules, BattlefieldRules, SummonerRules, SustainedComboRules, ComboRules, MatchFeatures, ProgressionMatchRules, TeamfightRules, CombatRules, AbilityRules, PreviousMatch):
     def __init__(self, blue, red, seed, champions):
         super().__init__(blue, red, seed, champions)
         self.initialize_combat()
         self.initialize_progression()
         self.initialize_match_features()
         self.initialize_battlefield()
+        self.initialize_clutch()
 
 
 
@@ -431,7 +435,7 @@ class Game(ManagementRules, DraftRules, CampaignRules):
                 "ops_view": self.management_view() if self.s["starter"]["finished"] else None}
 
     def export_save(self):
-        payload = {"schema": 6, "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
+        payload = {"schema": 7, "engine": ENGINE_VERSION, "dataset": self.catalog["version"],
                    "champions": self.champion_data["version"],
                    "mechanics": self.champion_data.get("revision", self.champion_data["version"]),
                    "effects": self.champion_data.get("effects_revision"), "vision": self.catalog.get("vision_revision"),
@@ -451,9 +455,9 @@ class Game(ManagementRules, DraftRules, CampaignRules):
             expected = hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
             if checksum != expected:
                 raise ValueError("세이브 무결성 검사에 실패했습니다.")
-            if (data["schema"], data["engine"]) in ((1, "1.0.0"), (2, "2.0.0"), (3, "3.0.0"), (4, "4.0.0"), (5, "5.0.0")):
+            if (data["schema"], data["engine"]) in ((1, "1.0.0"), (2, "2.0.0"), (3, "3.0.0"), (4, "4.0.0"), (5, "5.0.0"), (6, "6.0.0")):
                 return cls.migrate_legacy(text, catalog, champions)
-            if data["schema"] != 6 or data["engine"] != ENGINE_VERSION:
+            if data["schema"] != 7 or data["engine"] != ENGINE_VERSION:
                 raise ValueError("다른 버전의 세이브입니다.")
             if (data["dataset"] != catalog["version"] or data["champions"] != champions["version"]
                     or data.get("mechanics") != champions.get("revision", champions["version"])
@@ -479,7 +483,9 @@ class Game(ManagementRules, DraftRules, CampaignRules):
     def migrate_legacy(cls, text, catalog, champions):
         # Replay with the unchanged v1 rules first. Never replace a user's earned roster.
         version = json.loads(text).get("engine")
-        if version == "5.0.0":
+        if version == "6.0.0":
+            from legacy_engine_v6 import Game as LegacyGame
+        elif version == "5.0.0":
             from legacy_engine_v5 import Game as LegacyGame
         elif version == "4.0.0":
             from legacy_engine_v4 import Game as LegacyGame
@@ -501,7 +507,9 @@ class Game(ManagementRules, DraftRules, CampaignRules):
         if "starter" not in candidate.s:
             candidate.s["starter"] = {"finished": True, "packs": {
                 r: {"league": "any", "year": "any", "card": old.s["roster"][r]} for r in ROLES}}
-        candidate.s["notice"] = ("기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 주간 운영·특성·전략 상성을 적용합니다."
+        candidate.s["notice"] = ("기존 진행을 보존했습니다. 다음 경기부터 선수별 고점·저점 규칙을 적용합니다."
+                                 if version == "6.0.0" else
+                                 "기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 주간 운영·특성·전략 상성을 적용합니다."
                                  if version == "5.0.0" else
                                  "기존 선수·재화·시즌을 보존했습니다. 다음 경기부터 성장·컨디션·유물·시너지를 적용합니다.")
         candidate.rng.state = old.rng.state

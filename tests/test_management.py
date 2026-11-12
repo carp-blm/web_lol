@@ -3,7 +3,7 @@ import unittest
 from test_engine import CATALOG, CHAMPIONS, finish
 from engine import Game, ROLES
 from legacy_engine_v5 import Game as GameV5
-from management import (PLANS, TRAITS, TRAINING, SPONSORS, DIVISIONS, COUNTER_BONUS, EXHAUSTED, EXHAUSTED_PENALTY,
+from management import (PLANS, TRAITS, TRAINING, SPONSORS, DIVISIONS, COUNTER_BONUS, EXHAUSTED, EXHAUSTED_PENALTY, MENTAL_TRAITS,
                         card_traits, plan_counter)
 
 
@@ -32,7 +32,8 @@ class TraitTests(unittest.TestCase):
             self.assertEqual(len(set(traits)), len(traits))
             self.assertTrue(set(traits) <= set(TRAITS))
             seen.update(traits)
-        self.assertEqual(seen, set(TRAITS))
+        # Mental traits are earned in matches (engine 7), never printed on a card.
+        self.assertEqual(seen, set(TRAITS) - set(MENTAL_TRAITS))
 
     def test_trait_stats_apply_to_both_teams(self):
         g = game()

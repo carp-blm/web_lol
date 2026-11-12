@@ -378,6 +378,8 @@ class Game(ManagementRules, DraftRules, CampaignRules):
                                      "counter": plan_counter(self.ops["plan"], enemy_style)}
             self.match.s["prepared_relics"] = self.s["prepared_relics"][:]
             self.s["prepared_relics"] = []
+            self.match.set_stage(self.s["season"]["phase"], self.s["season"]["series"])
+            self.match.set_derby(self.derby_pairs(ids, self.s["season"]["teams"][opponent]["roster"]))
         elif kind == "tick":
             steps = action.get("steps", 1)
             if type(steps) is not int or not 1 <= steps <= 3600 or not self.match:

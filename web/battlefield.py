@@ -5,6 +5,7 @@ only units physically near an encounter/objective can participate.
 """
 import math
 from combat import LANES, LABEL, bound
+from josa import josa
 
 BASES = ((10, 90), (90, 10))
 PITS = {"dragon": (66, 66), "herald": (35, 35), "baron": (35, 35)}
@@ -164,7 +165,7 @@ class BattlefieldRules:
         if not self.present(u) or u["roam_until"] > self.s["time"]:
             return False
         self.move_to(u, self.lane_point(lane, side), lane, f'{LABEL[lane]} 로밍 합류', 80)
-        self.log("roam", f'{u["name"]} · {LABEL[lane]}로 이동. 도착 전에는 교전에 합류할 수 없습니다.', side)
+        self.log("roam", f'{u["name"]} · {josa(LABEL[lane], '로')} 이동. 도착 전에는 교전에 합류할 수 없습니다.', side)
         return True
 
     def gank(self, side, lane):

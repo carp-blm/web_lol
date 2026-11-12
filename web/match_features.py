@@ -1,5 +1,6 @@
 """Target access, concrete fight reports, streaks, lane kill choices and awards."""
 from copy import deepcopy
+from josa import josa
 
 
 def clamp(n, low, high):
@@ -41,7 +42,7 @@ class MatchFeatures:
         if self.rng.random() < breach:
             return target, living, "전열 돌파"
         blocker = min(front, key=lambda u: (u["hp"], -self.threat(u)))
-        return blocker, front, f'{self.unit_label(blocker)}이(가) 후열 접근 차단'
+        return blocker, front, f'{josa(self.unit_label(blocker), "이")} 후열 접근 차단'
 
     def add_highlight(self, kind, title, detail, side=None):
         entry = {"time": self.s["time"], "kind": kind, "title": title, "detail": detail, "side": side}
@@ -118,7 +119,7 @@ class MatchFeatures:
                 actor, target = max(allies,key=self.threat), min(enemies,key=lambda u:u["hp"])
                 chance = round(clamp(self.encounter_odds(allies,enemies,lane)+.1,.15,.90),2)
                 self.s["event"] = {"id": f'kill-{self.s["tick"]}', "kind":"lane_kill", "title": "라인 킬 기회! 끝까지 추격할까요?",
-                    "context": f'{self.unit_label(target)} 체력 {target["hp"]:.1f}%', "story":f'{self.unit_label(actor)}이(가) 킬 각을 포착했습니다. 성공하면 선공, 실패하면 상대가 먼저 반격합니다. 처치는 실제 교전으로 결정됩니다.',
+                    "context": f'{self.unit_label(target)} 체력 {target["hp"]:.1f}%', "story":f'{josa(self.unit_label(actor), "이")} 킬 각을 포착했습니다. 성공하면 선공, 실패하면 상대가 먼저 반격합니다. 처치는 실제 교전으로 결정됩니다.',
                     "lane":lane,"role":actor["role"],"objective":None,
                     "skill":{"key":"AA","name":"기본 공격","tags":["damage"],"icon":"assets/skill-placeholder.svg"},
                     "options":[{"id":"commit","label":"추격하여 킬을 노린다","chance":chance,"detail":"3턴 교전 · 처치 시 300G · 역습 위험"},

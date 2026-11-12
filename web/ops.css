@@ -6,6 +6,8 @@
 .trait-chip.trait-prospect{border-color:#5c7a3a;color:var(--lime)}
 .trait-chip.trait-big_game,.trait-chip.trait-clutch{border-color:#6e5a2c;color:var(--gold)}
 .trait-chip.trait-iron,.trait-chip.trait-veteran{border-color:#3e5a72;color:#9cc8ee}
+.trait-chip.trait-big_stage{border-color:var(--gold);color:#0d1318;background:var(--gold)}
+.trait-chip.trait-fragile{border-color:#6e3434;color:var(--red);background:#2a1a1a}
 
 .stamina{position:relative;height:16px;border-radius:3px;background:#0f171c;border:1px solid var(--line);overflow:hidden;min-width:90px}
 .stamina i{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#3f7d4c,var(--lime));transition:width .3s}
@@ -171,10 +173,13 @@
 
 /* Engine 7 pressure / resolve / clutch in the arena. */
 .pressure-row{display:flex;align-items:center;gap:6px;margin:4px 0 2px}
-.pressure-bar{flex:1;height:4px;border-radius:2px;background:#0f171c;overflow:hidden}
-.pressure-bar i{display:block;height:100%;background:linear-gradient(90deg,#6b5a2a,var(--warn));transition:width .4s}
-.pressure-bar.high i{background:linear-gradient(90deg,var(--warn),var(--red))}
+.pressure-steps{flex:1;display:flex;gap:2px}
+.pressure-steps i{flex:1;height:4px;border-radius:2px;background:#0f171c;transition:background .4s}
+.pressure-steps.stage-tense i.on{background:#8a7434}
+.pressure-steps.stage-edge i.on{background:var(--warn)}
+.pressure-steps.stage-limit i{background:var(--red)}
 .pressure-label{font-size:9px;color:var(--muted);white-space:nowrap}
+.pressure-steps.stage-edge+.pressure-label,.pressure-steps.stage-limit+.pressure-label{color:var(--warn)}
 .resolve-badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap}
 .resolve-badge.awakened{background:var(--gold);color:#0d1318;box-shadow:0 0 8px rgba(226,194,122,.6)}
 .resolve-badge.shaken{background:#3a2222;color:var(--red);border:1px solid #6e3434}
@@ -182,4 +187,18 @@
 .map-unit.shaken{filter:grayscale(.6)}
 .log-clutch{color:var(--gold);font-weight:700}
 .log-resolve{color:#d9c7a0}
-@media(prefers-reduced-motion:reduce){.pressure-bar i{transition:none}}
+@media(prefers-reduced-motion:reduce){.pressure-steps i{transition:none}}
+/* Engine 7 mental traits from resolve checks. */
+.mental-panel{margin-top:14px;padding:12px 14px;border:1px solid #3a3322;border-radius:6px;background:#141a1e}
+.mental-panel h3{margin:4px 0 8px}
+.mental-row{display:grid;grid-template-columns:minmax(80px,auto) auto 1fr;gap:8px;align-items:center;padding:4px 0;font-size:12px}
+.mental-row small{color:var(--muted)}
+.mental-row.lose .trait-chip{opacity:.55;text-decoration:line-through}
+@media(max-width:560px){.mental-row{grid-template-columns:1fr auto}.mental-row small{grid-column:1/-1}}
+.decision-card.clutch-call .choice{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold),0 0 14px rgba(226,194,122,.35)}
+.decision-card.clutch-call .choice strong{color:var(--gold)}
+.derby-note{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;margin:10px 0;padding:8px 10px;border-left:3px solid var(--gold);background:#1a1810;font-size:12px}
+.derby-note b{color:var(--gold)}
+.derby-note small{color:var(--muted)}
+.derby-note>small{flex-basis:100%}
+.derby-tag{margin:8px 0;font-size:11px;color:var(--gold);text-align:center}

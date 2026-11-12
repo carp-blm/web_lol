@@ -5,6 +5,7 @@ Relic effects are Nexus Archive rules, independent of League item balance.
 """
 from collections import Counter
 from copy import deepcopy
+from josa import josa
 
 STATS = ("lane", "combat", "vision", "farm")
 CONDITIONS = (("부진", -6), ("저조", -3), ("보통", 0), ("좋음", 3), ("절정", 6))
@@ -152,7 +153,7 @@ class CampaignRules:
         group = relic.get("exclusive")
         for other in (*owned, *self.s["prepared_relics"]):
             if other != rid and group and RELICS[other].get("exclusive") == group:
-                return f'{RELICS[other]["name"]}와 동시 소유할 수 없습니다. ({group})'
+                return f'{josa(RELICS[other]["name"], "와")} 동시 소유할 수 없습니다. ({group})'
         return None
 
     def acquire_relic(self, rid):

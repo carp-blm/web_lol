@@ -9,8 +9,10 @@ These are Nexus Archive campaign rules, not a model of real teams or real patche
 """
 import hashlib
 from copy import deepcopy
+from josa import josa
 
 STATS = ("lane", "combat", "vision", "farm")
+ROLES = ("top", "jng", "mid", "bot", "sup")
 STAT_NAMES = {"lane": "라인전", "combat": "전투", "vision": "시야", "farm": "성장"}
 
 DIVISIONS = (
@@ -66,7 +68,18 @@ TRAITS = {
     "flex": {"name": "챔피언 폭", "desc": "챔피언 연습 효율 +60%", "practice": .6},
     "iron": {"name": "철인", "desc": "훈련·경기 피로 −40%", "fatigue": .4},
     "clutch": {"name": "강심장", "desc": "컨디션 최저 '저조'(−3)", "floor": -3},
+    # Engine 7 mental traits: earned in matches from resolve checks, our club only (see MENTAL_*).
+    "big_stage": {"name": "큰 무대 체질", "desc": "각성 확률 +10%p · 한 시즌 각성 3회로 획득", "mental": True},
+    "fragile": {"name": "새가슴", "desc": "압박 증가 +20% · 각성 확률 −10%p · 한 시즌 각성 2회면 휴식기에 극복", "mental": True},
 }
+
+# Lasting marks of resolve checks, per player (not per card) and for our club only.
+MENTAL_TRAITS = ("big_stage", "fragile")
+BIG_STAGE_AWAKENINGS = 3          # awakenings in one season → 큰 무대 체질
+FRAGILE_PLAYOFF_SHAKEN = 3        # falters in one season's playoff matches → 새가슴
+FRAGILE_SEASON_SHAKEN = 5         # or falters in one season overall
+OVERCOME_AWAKENINGS = 2           # a 새가슴 player who awakens this often in a season overcomes it in the off-season
+LOSE_BIG_STAGE_SHAKEN = 3         # a 큰 무대 체질 player who falters this often without awakening loses it
 
 SPONSORS = {
     "win_bonus": {"name": "네온 펄스 에너지", "desc": "승리할 때마다 +70 CR", "win": 70},
@@ -142,6 +155,7 @@ class ManagementRules:
         m.setdefault("closed_season", 0)
         m.setdefault("division_history", [])
         m.setdefault("sponsor_income", 0)
+        m.setdefault("mental", {})
         return m
 
     @property
@@ -169,6 +183,83 @@ class ManagementRules:
 
     def traits(self, cid):
         return card_traits(self.cards[cid])
+
+    # ---- mental traits (engine 7) ------------------------------------------------------------
+    def mental_record(self, cid):
+        return self.ops.setdefault("mental", {}).setdefault(self.cards[cid]["player_id"],
+                                             {"traits": [], "awakened": 0, "shaken": 0, "playoff_shaken": 0})
+
+    def mental_traits(self, cid):
+        entry = self.ops.get("mental", {}).get(self.cards[cid]["player_id"])
+        return list(entry["traits"]) if entry else []
+
+    def set_mental(self, cid, trait, events, reason):
+        record = self.mental_record(cid)
+        if trait in record["traits"]:
+            return
+        for other in MENTAL_TRAITS:
+            if other in record["traits"]:
+                record["traits"].remove(other)
+                events.append({"card_id": cid, "name": self.cards[cid]["name"], "trait": other, "change": "lose", "reason": reason})
+        record["traits"].append(trait)
+        events.append({"card_id": cid, "name": self.cards[cid]["name"], "trait": trait, "change": "gain", "reason": reason})
+
+    def settle_mental(self, match, playoff):
+        """After each of our matches: count resolve outcomes; earn a mental trait at a threshold."""
+        events = []
+        for u in match["teams"][0]:
+            awakened, shaken = u.get("awakenings", 0), u.get("shaken", 0)
+            if not (awakened or shaken):
+                continue
+            cid = u["card_id"]
+            record = self.mental_record(cid)
+            record["awakened"] += awakened
+            record["shaken"] += shaken
+            record["playoff_shaken"] += shaken if playoff else 0
+            if awakened and record["awakened"] >= BIG_STAGE_AWAKENINGS:
+                self.set_mental(cid, "big_stage", events, f'이번 시즌 각성 {record["awakened"]}회')
+            elif shaken and (record["playoff_shaken"] >= FRAGILE_PLAYOFF_SHAKEN or record["shaken"] >= FRAGILE_SEASON_SHAKEN):
+                self.set_mental(cid, "fragile", events, f'플레이오프 흔들림 {record["playoff_shaken"]}회' if playoff and record["playoff_shaken"] >= FRAGILE_PLAYOFF_SHAKEN else f'이번 시즌 흔들림 {record["shaken"]}회')
+        match["mental_report"] = events
+        return events
+
+    def close_mental_season(self):
+        """Off-season: a 새가슴 player who still awakened enough overcomes it; tallies reset."""
+        events = []
+        for pid, record in sorted(self.ops["mental"].items()):
+            cid = next((c for c in self.s["owned"] if self.cards[c]["player_id"] == pid), None)
+            name = self.cards[cid]["name"] if cid else pid
+            if "fragile" in record["traits"] and record["awakened"] >= OVERCOME_AWAKENINGS:
+                record["traits"].remove("fragile")
+                events.append({"card_id": cid, "name": name, "trait": "fragile", "change": "lose", "reason": f'시즌 각성 {record["awakened"]}회로 극복'})
+            elif "big_stage" in record["traits"] and record["awakened"] == 0 and record["shaken"] >= LOSE_BIG_STAGE_SHAKEN:
+                record["traits"].remove("big_stage")
+                events.append({"card_id": cid, "name": name, "trait": "big_stage", "change": "lose", "reason": f'각성 없이 흔들림 {record["shaken"]}회'})
+            record.update(awakened=0, shaken=0, playoff_shaken=0)
+        return events
+
+    # ---- former-teammate derby (engine 7) ----------------------------------------------------
+    def career_stints(self, cid):
+        """(team_id, year) -> card for every season this player has in the archive."""
+        card = self.cards[cid]
+        ids = self.catalog.get("players", {}).get(card["player_id"], {}).get("cards", [cid])
+        return {(self.cards[i]["team_id"], self.cards[i]["year"]): self.cards[i] for i in ids if i in self.cards}
+
+    def derby_pairs(self, ours, theirs):
+        """Players on opposite sides who played on the same team in the same year."""
+        pairs = []
+        for a in ours:
+            mine = self.career_stints(a)
+            for b in theirs:
+                if self.cards[a]["player_id"] == self.cards[b]["player_id"]:
+                    continue
+                shared = sorted(set(mine) & set(self.career_stints(b)), key=lambda k: (k[1], k[0]))
+                if shared:
+                    stint = mine[shared[-1]]
+                    pairs.append({"ours": self.cards[a]["role"], "theirs": self.cards[b]["role"],
+                                  "ours_name": self.cards[a]["name"], "theirs_name": self.cards[b]["name"],
+                                  "team": stint["team"], "year": stint["year"]})
+        return pairs
 
     def trait_sum(self, cid, key):
         return sum(TRAITS[t].get(key, 0) for t in self.traits(cid))
@@ -217,7 +308,7 @@ class ManagementRules:
         playoff = bool(season and season["phase"] in ("semifinal", "final"))
         for unit in units:
             cid = unit["card_id"]
-            unit["traits"] = self.traits(cid)
+            unit["traits"] = self.traits(cid) + (self.mental_traits(cid) if campaign and "management" in self.s else [])
             career = self.career_range(cid)
             unit["peak"], unit["floor"] = dict(career["peak"]), dict(career["floor"])
             unit["meta"] = None
@@ -335,6 +426,8 @@ class ManagementRules:
         played = {u["card_id"]: u for u in match["teams"][0]}
         training_bonus = self.sponsor_value("training")
         relief = self.sponsor_value("fatigue")
+        if match.get("clutch_rules"):
+            self.settle_mental(match, self.s["season"]["phase"] in ("semifinal", "final"))
         report = []
         for cid in list(dict.fromkeys([*starters, *self.s["owned"]])):
             before = self.stamina(cid)
@@ -412,10 +505,10 @@ class ManagementRules:
         ops["division"] = after
         ops["season_result"] = {"season": self.s["season_number"], "outcome": outcome, "standing": standing,
                                 "champion": champion, "final": reached_final, "from": before, "to": after,
-                                "sponsor_bonus": bonus}
+                                "sponsor_bonus": bonus, "mental": self.close_mental_season()}
         ops["division_history"].append({"season": self.s["season_number"], "division": before,
                                         "standing": standing, "champion": champion, "outcome": outcome})
-        label = {"promote": f'{DIVISIONS[after]["name"]} 승격!', "relegate": f'{DIVISIONS[after]["name"]}로 강등',
+        label = {"promote": f'{DIVISIONS[after]["name"]} 승격!', "relegate": f'{josa(DIVISIONS[after]["name"], "로")} 강등',
                  "stay": f'{DIVISIONS[after]["name"]} 잔류'}[outcome]
         self.s["notice"] = f'시즌 종료 · {label}'
 
@@ -454,7 +547,7 @@ class ManagementRules:
             if action.get("sponsor") not in ops.get("sponsor_offers", []):
                 raise ValueError("이번 시즌 제안받은 스폰서만 계약할 수 있습니다.")
             ops["sponsor"] = action["sponsor"]
-            self.s["notice"] = f'{SPONSORS[ops["sponsor"]]["name"]}와 시즌 계약 체결'
+            self.s["notice"] = f'{josa(SPONSORS[ops["sponsor"]]["name"], "와")} 시즌 계약 체결'
         else:
             raise ValueError("지원하지 않는 운영 명령입니다.")
 
@@ -478,6 +571,7 @@ class ManagementRules:
         return {"team": opponent, "name": team["name"], "style": style, "record": [team["wins"], team["losses"]],
                 "overall": round(sum(self.cards[c]["overall"] for c in team["roster"]) / 5, 1),
                 "players": players, "likely_bans": threats,
+                "derbies": self.derby_pairs([self.s["roster"][r] for r in ROLES if r in self.s["roster"]], team["roster"]),
                 "counter": plan_counter(plan, style),
                 "suggested": next((k for k, v in PLANS.items() if v["beats"] == style), "balanced")}
 
@@ -485,6 +579,6 @@ class ManagementRules:
         owned = set(self.s["owned"])
         return {"plans": deepcopy(PLANS), "training_catalog": deepcopy(TRAINING), "traits_catalog": deepcopy(TRAITS),
                 "sponsor_catalog": deepcopy(SPONSORS), "divisions": deepcopy(DIVISIONS), "meta_tags": dict(META_TAGS),
-                "card_traits": {cid: card_traits(self.cards[cid]) for cid in owned},
+                "card_traits": {cid: card_traits(self.cards[cid]) + self.mental_traits(cid) for cid in owned},
                 "condition_shift": {cid: self.condition_shift(cid) for cid in self.s["roster"].values()},
                 "scouting": self.scouting_report() if self.s.get("season") else None}

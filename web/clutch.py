@@ -12,6 +12,7 @@ deliberately never shown; see CHOICE_PRESSURE.
 """
 from battlefield import PITS
 from combat import LANES, bound
+from josa import josa
 
 STATS = ("lane", "combat", "vision", "farm")
 PRESSURE_INTERVAL = 10
@@ -66,6 +67,20 @@ EVENT_SCALE = 3.0            # scales pressure from deaths and lost objectives
 OUTNUMBERED_CLUTCH = .55
 STEAL_CHANCE, STEAL_SMITE_BONUS, STEAL_RADIUS = .50, .15, 30
 OBJECTIVE_NAMES = {"dragon": "드래곤", "herald": "전령", "baron": "바론"}
+# Mental traits earned over a season (management.py): 큰 무대 체질 and 새가슴.
+BIG_STAGE_CHANCE, FRAGILE_CHANCE, FRAGILE_PRESSURE = .10, -.10, 1.2
+# Big matches start tense for both teams; a deciding game (series 1:1) adds more.
+STAGE_PRESSURE = {"semifinal": 15, "final": 30}
+DECIDER_PRESSURE = 10
+STAGE_NAMES = {"semifinal": "플레이오프 4강", "final": "결승"}
+# Clutch call: while one of our players is awakened with the clutch play unused and is part of a
+# tactical event, the coach may hand the moment to them. It rolls like the main commit at better
+# odds; on success the player also lands a guaranteed kill. Either way the clutch play is spent.
+CLUTCH_CALL_BONUS, CLUTCH_CALL_CAP = .20, .95
+CLUTCH_CALL_REACH = 45       # an awakened player this close rushes in to take the call
+# Former-teammate derby: both players start tense, and beating the old teammate weighs more.
+DERBY_START, DERBY_KILL_PRESSURE, DERBY_KILL_RELIEF = 10, 8, -8
+CALL_LOOKAHEAD = 20          # after one of our players awakens, the next tactical moment comes within this many seconds
 
 
 def resolve_chance(unit):
@@ -73,6 +88,7 @@ def resolve_chance(unit):
     traits = set(unit.get("traits", []))
     condition = unit.get("condition", {}).get("modifier", 0)
     return round(bound(.30 + .15*("clutch" in traits) + .10*("big_game" in traits) + .05*("veteran" in traits)
+                       + BIG_STAGE_CHANCE*("big_stage" in traits) + FRAGILE_CHANCE*("fragile" in traits)
                        + .02*condition, .10, .75), 2)
 
 
@@ -88,6 +104,37 @@ class ClutchRules:
                 u.setdefault("floor", dict(u["ratings"]))
                 u.update(pressure=0, resolve=None, awakenings=0, shaken=0, clutch_plays=0, next_resolve_at=0,
                          resolve_chance=resolve_chance(u))
+
+    def set_stage(self, phase, series):
+        """Called by the campaign before kickoff. Both teams carry the weight of a big match."""
+        base = STAGE_PRESSURE.get(phase, 0)
+        if not base:
+            return
+        decider = list(series) == [1, 1]
+        amount = base + (DECIDER_PRESSURE if decider else 0)
+        for team in self.s["teams"]:
+            for u in team:
+                self.add_pressure(u, amount)
+        self.s["stage"] = {"phase": phase, "decider": decider, "pressure": amount}
+        title = f'{STAGE_NAMES[phase]}{" 최종전" if decider else ""}'
+        self.log("resolve", f'{title} · 큰 경기의 무게로 양 팀 모두 긴장한 채 시작합니다.')
+        self.add_highlight("stage", title, "큰 경기 · 양 팀 압박이 높은 상태로 시작")
+
+    def set_derby(self, pairs):
+        """pairs: [{"ours": role, "theirs": role, "ours_name", "theirs_name", "team", "year"}] from the campaign."""
+        self.s["derbies"] = [dict(p) for p in pairs]
+        tense = set()
+        for p in pairs:
+            ours, theirs = self.unit(0, p["ours"]), self.unit(1, p["theirs"])
+            ours.setdefault("rivals", []).append(p["theirs"])
+            theirs.setdefault("rivals", []).append(p["ours"])
+            tense.update({(0, p["ours"]), (1, p["theirs"])})
+            title = f'옛 동료 더비 · {p["ours_name"]} vs {p["theirs_name"]}'
+            detail = f'{p["year"]} {p["team"]}에서 함께 뛴 두 선수가 적으로 만났습니다'
+            self.log("resolve", f'{title} — {detail}.')
+            self.add_highlight("derby", title, detail)
+        for side, role in sorted(tense):
+            self.add_pressure(self.unit(side, role), DERBY_START)
 
     @staticmethod
     def awakened(u):
@@ -107,7 +154,8 @@ class ClutchRules:
     def add_pressure(self, u, amount):
         if amount > 0:
             traits = set(u.get("traits", []))
-            amount *= (.7 if "clutch" in traits else 1) * (.85 if "veteran" in traits else 1)
+            amount *= ((.7 if "clutch" in traits else 1) * (.85 if "veteran" in traits else 1)
+                       * (FRAGILE_PRESSURE if "fragile" in traits else 1))
         u["pressure"] = round(bound(u["pressure"] + amount, 0, 100), 1)
 
     def pressure_gain(self, u):
@@ -158,6 +206,8 @@ class ClutchRules:
             self.add_highlight("awakened", title, detail, u["side"])
             if u["side"] == 0:
                 self.add_report(title, detail)
+                # The team looks to the awakened player: the next tactical moment comes sooner.
+                self.s["next_event"] = min(self.s["next_event"], now+CALL_LOOKAHEAD)
         else:
             u["ratings"] = {k: max(u["floor"][k], v-SHAKEN_PENALTY) for k, v in saved.items()}
             u["resolve"] = {"kind": "shaken", "until": now+SHAKEN_SECONDS, "saved": saved, "clutch_used": True}
@@ -197,6 +247,13 @@ class ClutchRules:
                 if mate is not victim and self.present(mate) and self.distance(mate["pos"], victim["pos"]) <= 25:
                     self.add_pressure(mate, NEARBY_DEATH_PRESSURE*EVENT_SCALE)
             self.add_pressure(attacker, KILL_RELIEF)
+            if victim["role"] in attacker.get("rivals", []) and attacker["side"] != victim["side"]:
+                self.add_pressure(victim, DERBY_KILL_PRESSURE)
+                self.add_pressure(attacker, DERBY_KILL_RELIEF)
+                attacker["derby_kills"] = attacker.get("derby_kills", 0)+1
+                self.log("resolve", f'더비 · {josa(attacker["name"], "이")} 옛 동료 {victim["name"]}에게 한 수 위를 보여줍니다.', attacker["side"])
+                if attacker["derby_kills"] == 1:
+                    self.add_highlight("derby", f'더비 · {attacker["name"]} 선제', f'{josa(self.unit_label(attacker), "이")} 옛 동료 {self.unit_label(victim)} 처치', attacker["side"])
 
     def objective(self, side, kind):
         super().objective(side, kind)
@@ -204,6 +261,11 @@ class ClutchRules:
             self.add_pressure(u, (8 if kind == "baron" else 4)*EVENT_SCALE)
 
     def encounter(self, kind, lane, blue, red, rounds=2, initiative=None, forced=None):
+        result = self.clutch_encounter(kind, lane, blue, red, rounds, initiative, forced)
+        self.offer_clutch_call()
+        return result
+
+    def clutch_encounter(self, kind, lane, blue, red, rounds, initiative, forced):
         now = self.s["time"]
         result = super().encounter(kind, lane, blue, red, rounds, initiative, forced)
         info = self.s.get("last_encounter")
@@ -224,20 +286,67 @@ class ClutchRules:
             self.kill_unit(hero, victim, allies)
             n = len(roles[1-side])
             self.clutch_moment(hero, "outnumbered", f'CLUTCH · {len(roles[side])}대{n} 역전 처치',
-                               f'{self.side_name(side)} {self.unit_label(hero)}이(가) 수적 열세에서 {self.unit_label(victim)} 처치')
+                               f'{self.side_name(side)} {josa(self.unit_label(hero), "이")} 수적 열세에서 {self.unit_label(victim)} 처치')
         return result
+
+    # ---- tactical calls ---------------------------------------------------------------------
+    def involved(self, side, event):
+        if event["kind"] == "lane_kill":
+            return self.lane_members(side, event["lane"])
+        return self.nearby(side, event.get("position", self.unit(0, event["role"])["pos"]), INVOLVED_RADIUS)
+
+    def event_point(self, event):
+        if event["kind"] == "lane_kill":
+            return self.lane_point(event["lane"], 0)
+        return event.get("position", self.unit(0, event["role"])["pos"])
+
+    def clutch_hero(self, event):
+        point, involved = self.event_point(event), self.involved(0, event)
+        ready = [u for u in self.s["teams"][0] if self.awakened(u) and not u["resolve"]["clutch_used"] and self.present(u)
+                 and (u in involved or self.distance(u["pos"], point) <= CLUTCH_CALL_REACH)]
+        return max(ready, key=lambda u: (u["ratings"]["combat"], u["role"])) if ready else None
+
+    def make_event(self):
+        super().make_event()
+        self.offer_clutch_call()
+
+    def offer_clutch_call(self):
+        event = self.s["event"]
+        if not event or self.s["winner"] is not None or any(o["id"] == "clutch" for o in event["options"]):
+            return
+        commit = next((o for o in event["options"] if o["id"] == "commit"), None)
+        hero = self.clutch_hero(event) if commit else None
+        if not hero:
+            return
+        chance = round(min(CLUTCH_CALL_CAP, commit.get("base_chance", commit["chance"]) + CLUTCH_CALL_BONUS), 2)
+        event["options"].append({"id": "clutch", "label": f'★ {hero["name"]}에게 맡긴다', "chance": chance,
+                                 "base_chance": chance, "hero": hero["role"],
+                                 "detail": "각성한 선수가 직접 승부 · 성공하면 처치 확정 · 성공·실패와 관계없이 클러치 기회 소모"})
+        if "relic_bonus" in event:
+            self.refresh_relic_chances()
 
     def choose(self, option_id):
         s, event = self.s, self.s["event"]
         if not event:
             return super().choose(option_id)
+        hero = None
+        if option_id == "clutch":
+            call = next((o for o in event["options"] if o["id"] == "clutch"), None)
+            if not call or s["winner"] is not None:
+                raise ValueError("현재 선택할 수 없는 전술입니다.")
+            hero = self.unit(0, call["hero"])
+            # The call plays out as the commit at the call's odds; the player's clutch play is this call.
+            next(o for o in event["options"] if o["id"] == "commit")["chance"] = call["chance"]
+            hero["resolve"]["clutch_used"] = True
+            if hero not in self.involved(0, event):
+                # The player rushes in: they join the fight at the event spot.
+                spot = list(self.event_point(event))
+                hero.update(pos=spot, destination=spot, route=[], moving=False, intent="클러치 콜 합류",
+                            location=event["lane"], roam_until=s["time"]+35)
+            option_id = "commit"
         lane_kill = event["kind"] == "lane_kill"
-        actor = self.unit(0, event["role"])
-        if lane_kill:
-            involved = [self.lane_members(side, event["lane"]) for side in (0, 1)]
-        else:
-            point = event.get("position", actor["pos"])
-            involved = [self.nearby(side, point, INVOLVED_RADIUS) for side in (0, 1)]
+        actor = hero or self.unit(0, event["role"])
+        involved = [self.involved(side, event) for side in (0, 1)]
         crowd = len([u for u in involved[0] if u is not actor])+1
         outnumbered = crowd < len(involved[1])
         hurt = any(u["hp"] < RETREAT_HP for u in involved[0]+[actor])
@@ -269,6 +378,27 @@ class ClutchRules:
             self.add_pressure(u, enemies)
         decision["pressure"] = {"outcome": outcome, "lead": lead, "allies": allies, "enemies": enemies,
                                 "outnumbered": outnumbered, "passive_calls": s["passive_calls"]}
+        if hero:
+            decision.update(choice="clutch", hero=hero["role"])
+            self.finish_clutch_call(hero, event, success)
+
+    def finish_clutch_call(self, hero, event, success):
+        label = self.unit_label(hero)
+        if not success:
+            self.log("clutch", f'{hero["name"]}에게 맡긴 승부가 막혔습니다 · 클러치 기회 소모', 0)
+            return
+        if not self.present(hero):
+            self.log("clutch", f'{josa(hero["name"], "이")} 승부를 열었지만 끝까지 버티지 못했습니다 · 클러치 기회 소모', 0)
+            return
+        victims = self.involved(1, event)
+        if victims:
+            victim = min(victims, key=lambda u: (u["hp"], u["role"]))
+            self.kill_unit(hero, victim, self.involved(0, event))
+            detail = f'우리 {josa(label, "이")} 감독의 부름에 응답해 {self.unit_label(victim)} 처치'
+        else:
+            detail = f'우리 {josa(label, "이")} 감독의 부름에 응답해 교전을 정리했습니다'
+        hero["resolve"]["clutch_used"] = False      # clutch_moment marks it spent and counts the play
+        self.clutch_moment(hero, "call", f'CLUTCH CALL · {hero["name"]}', detail)
 
     def resolve_objective(self):
         attempt = self.s["objective_attempt"]
@@ -286,7 +416,7 @@ class ClutchRules:
                     thief["hp"] = max(1, thief["hp"]-10)
                     self.objective(thief_side, kind)
                     self.clutch_moment(thief, "steal", f'CLUTCH · {OBJECTIVE_NAMES[kind]} 스틸',
-                                       f'{self.side_name(thief_side)} {self.unit_label(thief)}이(가) 상대가 사냥하던 {OBJECTIVE_NAMES[kind]}를 가로챘습니다')
+                                       f'{self.side_name(thief_side)} {josa(self.unit_label(thief), "이")} {self.side_name(1-thief_side)} 팀이 사냥하던 {josa(OBJECTIVE_NAMES[kind], "을")} 가로챘습니다')
                     return
         super().resolve_objective()
 

@@ -4,6 +4,7 @@ Values are common MVP balance rules, not patch-exact damage or spawn rules.
 No function selects a match winner: the inherited structure path destroys a nexus.
 """
 import math
+from josa import josa
 
 LANES = ("top", "mid", "bot")
 LABEL = {"top": "탑", "mid": "미드", "bot": "바텀", "jungle": "정글", "river": "강가"}
@@ -194,7 +195,7 @@ class CombatRules:
         self.spend_skill(caster, spell)
         effects = spell.get("effects", {})
         if not self.offensive(spell):
-            self.log("skill", f'{caster["name"]} · {self.skill_label(spell)}로 위치를 잡고 후속 시전을 준비합니다.', caster["side"], spell)
+            self.log("skill", f'{caster["name"]} · {josa(self.skill_label(spell), '로')} 위치를 잡고 후속 시전을 준비합니다.', caster["side"], spell)
             return {"caster": caster["role"], "caster_name": caster["name"], "side": caster["side"],
                     "skill": spell.get("id", spell["key"]), "skill_name": spell["name"], "hits": 0, "cc": []}
         primary, reachable, targeting = self.select_combat_target(caster, living, spell, lane)
@@ -205,7 +206,7 @@ class CombatRules:
         for victim in targets:
             if self.rng.random() >= self.hit_chance(caster, victim, lane, spell):
                 if victim is primary:
-                    self.log("dodge", f'{victim["name"]}이(가) {caster["name"]}의 {spell["name"]}을 피했습니다.', victim["side"], spell)
+                    self.log("dodge", f'{josa(victim["name"], "이")} {caster["name"]}의 {josa(spell["name"], "을")} 피했습니다.', victim["side"], spell)
                 continue
             hits += 1
             hit_spell = spell if victim is primary else dict(spell, effects={**effects, "cc": effects.get("secondary_cc", effects.get("cc", []))})
@@ -281,7 +282,7 @@ class CombatRules:
         if not self.present(u) or u["roam_until"] > self.s["time"]:
             return False
         u.update(location=lane, roam_until=self.s["time"]+self.rng.integer(42, 66))
-        self.log("roam", f'{u["name"]} 서포터가 {LABEL[lane]}로 로밍합니다. 바텀은 남은 인원으로 버텨야 합니다.', side)
+        self.log("roam", f'{u["name"]} 서포터가 {josa(LABEL[lane], '로')} 로밍합니다. 바텀은 남은 인원으로 버텨야 합니다.', side)
         return True
 
     def lane_members(self, side, lane):
@@ -303,7 +304,7 @@ class CombatRules:
         if self.present(enemy) and self.rng.random() < .12 + max(0, self.vision_delta(1-side, lane))*.025:
             enemy.update(location=lane, roam_until=self.s["time"]+18)
             teams[1-side].append(enemy)
-            self.log("gank", f'{enemy["name"]}이(가) 동선을 읽고 역갱에 합류했습니다.', 1-side)
+            self.log("gank", f'{josa(enemy["name"], "이")} 동선을 읽고 역갱에 합류했습니다.', 1-side)
         self.encounter("gank", lane, *teams, rounds=2, initiative=side)
 
     def farm_camp(self, side, owner=None, lane=None):
@@ -474,7 +475,7 @@ class CombatRules:
         cc = max((CC.get(c, 0) for c in spell.get("effects", {}).get("cc", [])), default=0)
         p = round(bound(self.encounter_odds(self.members(0), self.members(1), lane)+(unit["mastery"]-60)*.002+cc*.025, .12, .90), 2)
         options = [
-            {"id": "commit", "label": f'{self.skill_label(spell)}로 교전 개시', "chance": p,
+            {"id": "commit", "label": f'{josa(self.skill_label(spell), "로")} 교전 개시', "chance": p,
              "detail": f'선공 기회 · CC 영향 {cc:.1f} · 실패 시 역습과 귀환 위험', "effect": "commit"},
             {"id": "vision", "label": "시야 확보 후 기회를 기다린다", "chance": round(bound(p+.18,.3,.95),2),
              "detail": "150G · 주변 시야 +3 · 후속 기습 탐지", "effect": "vision"},

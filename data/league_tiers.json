@@ -16,7 +16,8 @@
     "LFL": [{"from": 2019, "tier": 2, "region": "EMEA"}],
     "PRM": [{"from": 2020, "tier": 2, "region": "EMEA"}],
     "SLO": [{"from": 2018, "to": 2020, "tier": 2, "region": "EMEA"}],
-    "LVP SL": [{"from": 2021, "tier": 2, "region": "EMEA"}],
+    "LVP SL": [{"from": 2021, "to": 2025, "tier": 2, "region": "EMEA"}],
+    "LES": [{"from": 2026, "tier": 2, "region": "EMEA"}],
     "TCL": [{"from": 2015, "tier": 2, "region": "EMEA"}],
     "UKLC": [{"from": 2019, "to": 2020, "tier": 2, "region": "EMEA"}],
     "NLC": [{"from": 2020, "tier": 2, "region": "EMEA"}],
@@ -44,5 +45,5 @@
     "VCS": [{"from": 2018, "to": 2024, "tier": 1, "region": "VN"}, {"from": 2025, "tier": 2, "region": "VN"}]
   },
   "sources": ["https://lolesports.com/", "https://oracleselixir.com/tools/downloads"],
-  "review_note": "2014-2026 by league code and year. 2025: LCP replaces PCS/LJL/VCS as the APAC top league (they continue as tier 2), LTA North/South replace LCS/CBLOL/LLA, and LCO ends. 2026: LCS and CBLOL return. No roster-only or unplayed substitute cards."
+  "review_note": "2014-2026 by league code and year. 2025: LCP replaces PCS/LJL/VCS as the APAC top league (they continue as tier 2), LTA North/South replace LCS/CBLOL/LLA, and LCO ends. 2026: LCS and CBLOL return, and the Spanish league LVP SL becomes LES. No roster-only or unplayed substitute cards."
 }

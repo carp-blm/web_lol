@@ -216,7 +216,10 @@ def build(seed=None):
         rows.sort(key=lambda r: (r["date"], r["gameid"]))
         recent = rows[-1]
         raw = raw_metrics(rows)
-        league = recent["league"]
+        # A team can play several eligible competitions in a year (LJL teams in 2024 PCS Summer,
+        # LTA cross-conference games in 2025). Label the card with the one it played most.
+        played = collections.Counter(r["league"] for r in rows)
+        league = max(played, key=lambda lg: (played[lg], max(r["date"] for r in rows if r["league"] == lg)))
         card = {"id": hashlib.sha256("|".join(map(str, key)).encode()).hexdigest()[:20],
                 "player_id": pid, "name": recent["playername"], "team": recent["teamname"],
                 "team_id": tid, "year": year, "role": role, "league": league,

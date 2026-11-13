@@ -53,6 +53,21 @@ class DataTests(unittest.TestCase):
         for c in self.data["cards"]:
             self.assertEqual(league_info(self.rules,c["league"],c["year"])["tier"],c["tier"])
 
+    def test_card_league_is_the_competition_played_most(self):
+        import collections
+        leagues=collections.defaultdict(list)
+        for r in self.rows:
+            leagues[(int(float(r["year"])),r["playerid"],r["teamid"],r["position"])].append((r["league"],r["date"]))
+        mixed=0
+        for c in self.data["cards"]:
+            rows=leagues[(c["year"],c["player_id"],c["team_id"],c["role"])]
+            played=collections.Counter(lg for lg,_ in rows)
+            if len(played)>1:mixed+=1
+            best=max(played,key=lambda lg:(played[lg],max(d for l,d in rows if l==lg)))
+            self.assertEqual(c["league"],best)
+        self.assertGreater(mixed,0)
+        self.assertIn("LES",self.data["coverage"]["leagues"])
+
     def test_old_seasons_rate_vision_from_wards(self):
         from build_data import raw_metrics
         rows=[{"vspm":"0","wpm":"0.5","wcpm":"0.2","dpm":"400","kills":"2","assists":"3","deaths":"1","cspm":"8","golddiffat15":""}]

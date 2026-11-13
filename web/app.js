@@ -53,6 +53,8 @@ async function act(action,{switchTo=null,quiet=false}={}){
   }catch(e){toast(e.message,true);}finally{busy=false;}
 }
 function image(url,alt,cls=''){return `<img class="${cls}" src="${esc(url)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer">`;}
+// Arena portraits are rebuilt on every tick; load them eagerly and decode in sync so a token never blinks empty.
+function liveImage(url,alt){return `<img src="${esc(url)}" alt="${esc(alt)}" loading="eager" decoding="sync" referrerpolicy="no-referrer">`;}
 document.addEventListener('error',e=>{if(e.target.tagName==='IMG'&&!e.target.dataset.fallback){e.target.dataset.fallback='1';e.target.src='./assets/skill-placeholder.svg';}},true);
 const precise=n=>Number(n.toFixed(2));
 function masteries(c){return c.mastery.map(m=>({...m,id:aliases[norm(m.name)]})).filter(m=>m.id).map(m=>({...m,value:precise(Math.min(100,m.value+(state?.progression?.[c.id]?.mastery?.[m.id]??0)))}));}
@@ -203,9 +205,26 @@ function summonerIcons(u,m){
 function choiceCards(event){
   return event.options.map((o,i)=>{const offers=o.summoners??[],id=`${event.id}:${o.id}`,selection=summonerSelections.get(id),selected=offers.find(x=>`${x.role}:${x.id}`===selection);return `<div class="decision-card ${o.id==='clutch'?'clutch-call':''}"><button class="choice" data-choice="${o.id}"><span class="chance">${Math.round((selected?.chance??o.chance)*100)}%${selected?`<small>기본 ${Math.round(o.chance*100)}%</small>`:''}</span><strong><kbd>${i+1}</kbd> ${esc(o.label)}</strong><small>${esc(o.detail)}</small></button>${offers.length?`<label class="spell-choice"><span>${selected?image(selected.icon,selected.name):'<span class="spell-plus">＋</span>'} 주문으로 지원</span><select aria-label="${esc(o.label)}에 사용할 주문" data-choice-spell="${id}"><option value="">주문 아끼기</option>${offers.map(x=>`<option value="${x.role}:${x.id}" ${selected===x?'selected':''}>${x.player} · ${x.name} → ${Math.round(x.chance*100)}% (${x.cooldown}초)</option>`).join('')}</select></label>`:''}</div>`;}).join('');
 }
+// Players standing on the same spot would hide each other: fan each stack out on a small ring.
+// Display only; the engine's positions are unchanged.
+const STACK_RADIUS=2.8;
+function spreadTokens(m){
+  const units=m.teams.flatMap((team,side)=>team.map(u=>({id:`${side}:${u.role}`,pos:u.pos??[side?75:25,25+roles.indexOf(u.role)*12]})));
+  const stacks=[];
+  for(const unit of units){const stack=stacks.find(s=>Math.hypot(s.x-unit.pos[0],s.y-unit.pos[1])<STACK_RADIUS);if(stack){stack.members.push(unit);}else stacks.push({x:unit.pos[0],y:unit.pos[1],members:[unit]});}
+  const shown=new Map();
+  for(const stack of stacks){
+    const n=stack.members.length;
+    if(n===1){shown.set(stack.members[0].id,stack.members[0].pos);continue;}
+    const cx=stack.members.reduce((a,u)=>a+u.pos[0],0)/n,cy=stack.members.reduce((a,u)=>a+u.pos[1],0)/n,r=n<=2?2.4:n<=4?3.2:4;
+    stack.members.forEach((u,i)=>{const a=Math.PI*2*i/n-Math.PI/2;shown.set(u.id,[+(cx+Math.cos(a)*r).toFixed(2),+(cy+Math.sin(a)*r).toFixed(2)]);});
+  }
+  return shown;
+}
 function mapSvg(m){
   const spatial=m.rules==='spatial-v5';
-  const tokens=m.teams.flatMap((team,side)=>team.map(u=>{const pos=u.pos??[side?75:25,25+roles.indexOf(u.role)*12],id=`${side}:${u.role}`,dead=u.status==='dead',casts=u.recent_casts??[];return `<button class="map-unit side-${side} ${dead?'dead':''} ${inspectedUnit===id?'inspected':''} ${u.resolve?.kind??''}" data-inspect="${id}" style="left:${pos[0]}%;top:${pos[1]}%" aria-label="${esc(u.name)} ${esc(champs.champions[u.champion].name)} ${roleKo[u.role]} 체력 ${Math.round(u.hp??100)}%" title="${esc(u.name)} · ${roleKo[u.role]} · ${esc(u.intent??u.location)}"><span class="map-casts">${casts.slice(-3).map(c=>`<span title="${esc(c.name)}">${image(c.icon,c.name)}<small>${esc(c.key)}</small></span>`).join('')}</span>${image(champs.champions[u.champion].portrait,champs.champions[u.champion].name)}<i class="map-hp"><b style="width:${u.hp??100}%"></b></i><small class="map-role">${u.role.toUpperCase()}</small></button>`;})).join('');
+  const shown=spreadTokens(m);
+  const tokens=m.teams.flatMap((team,side)=>team.map(u=>{const id=`${side}:${u.role}`,pos=shown.get(id),dead=u.status==='dead',casts=u.recent_casts??[];return `<button class="map-unit side-${side} ${dead?'dead':''} ${inspectedUnit===id?'inspected':''} ${u.resolve?.kind??''}" data-inspect="${id}" style="left:${pos[0]}%;top:${pos[1]}%" aria-label="${esc(u.name)} ${esc(champs.champions[u.champion].name)} ${roleKo[u.role]} 체력 ${Math.round(u.hp??100)}%" title="${esc(u.name)} · ${roleKo[u.role]} · ${esc(u.intent??u.location)}"><span class="map-casts">${casts.slice(-3).map(c=>`<span title="${esc(c.name)}">${image(c.icon,c.name)}<small>${esc(c.key)}</small></span>`).join('')}</span>${liveImage(champs.champions[u.champion].portrait,champs.champions[u.champion].name)}<i class="map-hp"><b style="width:${u.hp??100}%"></b></i><small class="map-role">${u.role.toUpperCase()}</small></button>`;})).join('');
   const towerPaths={top:[[11,70],[11,44],[12,25]],mid:[[25,75],[33,67],[40,60]],bot:[[30,89],[56,89],[75,88]]};
   let towers='';for(const side of [0,1])for(const lane of ['top','mid','bot'])towerPaths[lane].forEach(([x,y],i)=>{if(side){x=100-x;y=100-y;}const alive=i<m.towers[side][lane];towers+=`<path d="M${x} ${y-1.5}l1.5 1.5-1.5 1.5-1.5-1.5Z" fill="${side?'#f27f8c':'#63dcd3'}" opacity="${alive?1:.18}"/>`;});
   const routes=spatial?m.teams.flatMap(t=>t.filter(u=>u.moving&&u.status==='active').map(u=>`<path class="route-line side-${u.side}" d="M${u.pos.join(' ')} ${[...(u.route??[]),u.destination].map(p=>'L'+p.join(' ')).join(' ')}"/>`)).join(''):'';
@@ -225,7 +244,7 @@ function pressureMarkup(u,m){
   return `<div class="pressure-row" title="압박 단계 · 한계를 넘으면 결의 판정 · 각성 확률 ${Math.round(u.resolve_chance*100)}% · 팀당 4분에 한 번"><span class="pressure-steps stage-${stage}">${[0,1,2].map(i=>`<i class="${i<level?'on':''}"></i>`).join('')}</span><span class="pressure-label">${label}</span></div>`;
 }
 function liveTeam(m,side){
-  return `<aside class="live-team side-${side}"><div class="team-heading"><span class="team-orb">${side?'R':'N'}</span><div><small>${side?'OPPONENT':'YOUR TEAM'}</small><b>${side?esc(m.opponent_name):'NEXUS CLUB'}</b></div></div>${m.teams[side].map(u=>`<button class="live-player ${inspectedUnit===`${side}:${u.role}`?'selected':''} ${u.status!=='active'?'inactive':''}" data-inspect="${side}:${u.role}"><div class="live-player-top"><span class="live-portrait">${image(champs.champions[u.champion].portrait,champs.champions[u.champion].name)}<small>${u.level??1}</small></span><span><b>${esc(u.name)}</b><small>${roleKo[u.role]} · ${esc(champs.champions[u.champion].name)}</small></span><strong class="kda">${u.kills??0}<i> / </i>${u.deaths??0}<i> / </i>${u.assists??0}</strong></div><div class="player-hp"><i style="width:${u.hp??100}%"></i></div>${pressureMarkup(u,m)}<div class="live-player-bottom">${summonerIcons(u,m)}<span>${u.status==='dead'?`복귀 ${Math.max(0,u.return_at-m.time)}초`:u.status==='recall'?'귀환 중':esc(u.intent??u.location)}<small>${u.cs??0} CS · ${num(u.gold??0)} G</small></span></div>${(u.kill_streak??0)>=2?`<span class="small-streak">${u.kill_streak}연속 처치</span>`:''}</button>`).join('')}</aside>`;
+  return `<aside class="live-team side-${side}"><div class="team-heading"><span class="team-orb">${side?'R':'N'}</span><div><small>${side?'OPPONENT':'YOUR TEAM'}</small><b>${side?esc(m.opponent_name):'NEXUS CLUB'}</b></div></div>${m.teams[side].map(u=>`<button class="live-player ${inspectedUnit===`${side}:${u.role}`?'selected':''} ${u.status!=='active'?'inactive':''}" data-inspect="${side}:${u.role}"><div class="live-player-top"><span class="live-portrait">${liveImage(champs.champions[u.champion].portrait,champs.champions[u.champion].name)}<small>${u.level??1}</small></span><span><b>${esc(u.name)}</b><small>${roleKo[u.role]} · ${esc(champs.champions[u.champion].name)}</small></span><strong class="kda">${u.kills??0}<i> / </i>${u.deaths??0}<i> / </i>${u.assists??0}</strong></div><div class="player-hp"><i style="width:${u.hp??100}%"></i></div>${pressureMarkup(u,m)}<div class="live-player-bottom">${summonerIcons(u,m)}<span>${u.status==='dead'?`복귀 ${Math.max(0,u.return_at-m.time)}초`:u.status==='recall'?'귀환 중':esc(u.intent??u.location)}<small>${u.cs??0} CS · ${num(u.gold??0)} G</small></span></div>${(u.kill_streak??0)>=2?`<span class="small-streak">${u.kill_streak}연속 처치</span>`:''}</button>`).join('')}</aside>`;
 }
 function unitInspector(m){
   const [side,role]=inspectedUnit.split(':'),u=m.teams[Number(side)].find(u=>u.role===role)??m.teams[0][0];
@@ -235,9 +254,31 @@ function unitInspector(m){
 function objectiveRibbon(m){
   return `<div class="objective-ribbon">${[['dragon','드래곤',m.next_dragon,'D',m.dragons],['herald','전령',480,'H',m.heralds],['baron','바론',m.next_baron,'B',m.barons]].map(([key,name,at,letter,score])=>`<div class="${m.objective_attempt?.kind===key?'contested':''}"><span class="objective-symbol">${letter}</span><span><b>${name}</b><small>${key==='herald'&&(!m.herald_available||m.time>=1200)?'사라짐':at>m.time?clock(at-m.time)+' 후 등장':m.objective_attempt?.kind===key?'사냥 중 · '+Math.max(0,m.objective_attempt.finish_at-m.time)+'초':'전장에 등장'}</small></span><strong>${score[0]}<i> : </i>${score[1]}</strong></div>`).join('')}</div>`;
 }
-function animateMap(){
-  const width=$('.rift-map')?.clientWidth??0;
-  document.querySelectorAll('.map-unit').forEach(el=>{const id=el.dataset.inspect,x=parseFloat(el.style.left),y=parseFloat(el.style.top),old=mapPositions.get(id);if(old&&!matchMedia('(prefers-reduced-motion: reduce)').matches&&Math.hypot(x-old.x,y-old.y)<35)el.animate([{translate:`${(old.x-x)*width/100}px ${(old.y-y)*width/100}px`},{translate:'0 0'}],{duration:850,easing:'linear'});mapPositions.set(id,{x,y});});
+// Tokens glide between engine ticks. Each re-render starts from where the token is on screen (so an
+// extra render mid-glide does not snap it) and lasts until the next tick is expected, measured from
+// the real tick cadence, so movement is continuous instead of move-pause-move.
+const mapMotion={clock:null,last:0,interval:1000,until:0};
+function captureMap(){
+  const map=$('.rift-map');if(!map)return;
+  const box=map.getBoundingClientRect();if(!box.width)return;
+  document.querySelectorAll('.map-unit').forEach(el=>{const r=el.getBoundingClientRect();mapPositions.set(el.dataset.inspect,{x:(r.left+r.width/2-box.left)/box.width*100,y:(r.top+r.height/2-box.top)/box.height*100,dead:el.classList.contains('dead')});});
+}
+function animateMap(clock){
+  const map=$('.rift-map');if(!map)return;
+  const width=map.clientWidth,now=performance.now();
+  if(clock!==mapMotion.clock){
+    const gap=now-mapMotion.last;
+    if(mapMotion.clock!==null&&gap>250&&gap<4000)mapMotion.interval=mapMotion.interval*.6+gap*.4;
+    Object.assign(mapMotion,{clock,last:now,until:now+mapMotion.interval});
+  }
+  const duration=Math.max(0,mapMotion.until-now),reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // At high speed a tick covers a long way; still glide, but never across the whole map (recalls, respawns).
+  const reach=Math.min(70,Math.max(35,speed*1.2));
+  document.querySelectorAll('.map-unit').forEach(el=>{
+    const id=el.dataset.inspect,x=parseFloat(el.style.left),y=parseFloat(el.style.top),old=mapPositions.get(id);
+    const respawn=old?.dead&&!el.classList.contains('dead'),dist=old?Math.hypot(x-old.x,y-old.y):0;
+    if(old&&!reduce&&!respawn&&duration>40&&dist>.05&&dist<reach)el.animate([{translate:`${(old.x-x)*width/100}px ${(old.y-y)*width/100}px`},{translate:'0 0'}],{duration,easing:'linear'});
+  });
 }
 function arena(){
   const m=state.match;
@@ -245,8 +286,9 @@ function arena(){
   const event=m.event,over=m.winner!==null,delta=m.gold[0]-m.gold[1],lead=Math.max(10,Math.min(90,50+delta/500));
   const filtered=[...m.log].reverse().filter(l=>feedFilter==='all'||(feedFilter==='combat'?['fight','encounter','skill','save','summoner','resolve','clutch'].includes(l.kind):['objective','decision','decision_result','roam','gank','vision'].includes(l.kind))).slice(0,45);
   const last=m.highlights?.at(-1);
+  captureMap();
   $('#arena').innerHTML=`<div class="arena-heading"><div><span class="eyebrow">MATCHDAY ${Math.min(state.season.round+1,5)} / ${phaseKo[state.season.phase]}${m.plans?` · ${esc(opsView()?.plans?.[m.plans.ours]?.name??'')} vs ${esc(opsView()?.plans?.[m.plans.theirs]?.name??'')} ${m.plans.counter>0?'▲':m.plans.counter<0?'▼':''}`:''}</span><h1>전장의 모든 순간.</h1></div><div class="arena-toolbar"><button class="secondary" data-auto ${over||event||m.reports?.length?'disabled':''}>${auto?'Ⅱ 일시정지':'▶ 경기 재개'}</button>${speedControls()}<button class="ghost coach-toggle ${autoCoach?'selected':''}" data-coach aria-pressed="${autoCoach}" ${over?'disabled':''} title="전술 선택은 성공률이 가장 높은 안을, 교전 보고서는 자동 확인합니다">AI 코치 ${autoCoach?'ON':'OFF'}</button><button class="ghost" data-step ${over||event||m.reports?.length?'disabled':''}>+1초</button></div></div><div class="broadcast-score"><div class="broadcast-team"><span class="club-monogram">N</span><div><small>BLUE SIDE</small><b>NEXUS CLUB</b><span>${num(m.gold[0])} G · ${m.dragons[0]} 드래곤</span></div><strong>${m.kills[0]}</strong></div><div class="broadcast-clock"><span class="live-label ${event||m.reports?.length?'paused':''}">${over?'FINAL':event?'DECISION':m.reports?.length?'SPOTLIGHT':auto?'● LIVE':'PAUSED'}</span><b>${clock(m.time)}</b><small>${m.time<840?'LANING PHASE':m.time<1800?'MID GAME':'LATE GAME'}</small></div><div class="broadcast-team opponent"><strong>${m.kills[1]}</strong><div><small>RED SIDE</small><b>${esc(m.opponent_name)}</b><span>${num(m.gold[1])} G · ${m.dragons[1]} 드래곤</span></div><span class="club-monogram">${esc(m.opponent_name?.[0]??'R')}</span></div></div><div class="gold-balance"><i style="width:${lead}%"></i><span>GOLD ${delta>=0?'+':''}${num(delta)}</span></div>${objectiveRibbon(m)}<div class="battle-layout">${liveTeam(m,0)}<div class="battle-center"><div class="battle-map-heading"><span><i class="status-dot"></i> LIVE BATTLEFIELD</span><small>챔피언을 선택해 전술 확인</small></div>${mapSvg(m)}<div class="map-legend"><span><i></i>우리 팀</span><span><i class="enemy-dot"></i>상대 팀</span><span>점선 · 이동 경로</span><span>초상화 위 · 사용 스킬</span></div></div>${liveTeam(m,1)}</div>${unitInspector(m)}${last?`<div class="moment-strip"><span>${clock(last.time)}</span><b>${esc(last.title)}</b><small>${esc(last.detail)}</small></div>`:''}${over?`<section class="match-result"><span class="eyebrow">NEXUS DESTROYED</span><div class="result-word ${m.winner===1?'loss':''}">${m.winner===0?'VICTORY':'DEFEAT'}</div><p>${clock(m.time)} · ${m.decisions.length}번의 선택 · ${esc(state.notice)}</p><div class="result-columns">${awardsMarkup(m)}${growthMarkup(m.growth_report)}</div>${mentalMarkup(m.mental_report,'이번 경기가 남긴 것')}${weekMarkup(m.week_report,m.sponsor_income)}${seasonResultMarkup()}${rewardMarkup()}${startButton()}</section>`:''}<div class="command-grid"><section class="log-panel"><div class="log-heading"><span>MATCH FEED <small>실시간 중계</small></span><div class="feed-tabs">${[['all','전체'],['combat','교전'],['macro','운영']].map(([id,label])=>`<button class="${feedFilter===id?'selected':''}" data-feed="${id}">${label}</button>`).join('')}</div></div><div class="log-feed" tabindex="0" aria-label="최근 경기 중계">${filtered.map(l=>`<div class="log-line log-${esc(l.kind)}"><time>${clock(l.time)}</time>${l.skill?image(l.skill.icon,l.skill.name):'<span class="feed-dot">·</span>'}<span>${esc(l.text)}</span></div>`).join('')||'<div class="feed-empty">선수들이 담당 라인으로 향하고 있습니다.</div>'}</div></section><section class="command-panel"><span class="eyebrow">COACH’S PLAYBOOK</span><h2>다음 한 수를 준비하세요.</h2>${targetControls(m)}${event?`<div class="pending-decision"><b>${esc(event.title)}</b><p>${esc(event.context)}</p><button class="primary" data-open-decision>전술 선택 열기 →</button></div>`:`<p>위치와 시야가 기회를 만듭니다.<br>중요한 순간, 경기가 멈추고<br>감독님의 결정을 기다립니다.</p>`}<div class="command-stats"><span>우리 시야<b>${m.vision[0]}</b></span><span>상대 시야<b>${m.vision[1]}</b></span><span>위치 기반 교전<b>${m.spatial_events??'—'}</b></span></div><div class="nexus-bars"><div>우리 넥서스 · ${m.nexus[0]}<div class="bar"><i style="width:${m.nexus[0]/40}%"></i></div></div><div>상대 넥서스 · ${m.nexus[1]}<div class="bar red"><i style="width:${m.nexus[1]/40}%"></i></div></div></div></section></div>${highlightsMarkup(m)}<p class="evidence">SIMULATION / ${m.seed} · 1× = 실제 1초당 경기 1초 · 지도 거리는 시뮬레이션 단위 · 소환사 주문은 경기 시간에 따라 재충전</p>`;
-  animateMap();
+  animateMap(m.time);
 }
 function collection(){
   const f=collectionFilter;

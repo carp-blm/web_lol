@@ -62,6 +62,17 @@ class SiegeScopeTests(unittest.TestCase):
         self.assertIs(MatchV6.siege, CombatRules.siege)
         self.assertFalse(hasattr(MatchV6, "siege_multiplier"))
 
+    @staticmethod
+    def roster_near(g, target):
+        """Deterministic roster: per role, the experienced card closest to the target OVR."""
+        ids, people = [], set()
+        for role in ("top", "jng", "mid", "bot", "sup"):
+            pool = [c for c in g.catalog["cards"] if c["role"] == role and c["games"] >= 20 and c["player_id"] not in people]
+            card = min(pool, key=lambda c: (abs(c["overall"]-target), c["id"]))
+            ids.append(card["id"])
+            people.add(card["player_id"])
+        return g.units(ids)
+
     def lengths(self, blue, red, champions):
         durations, stalled = [], 0
         for seed in range(1, 41):
@@ -79,9 +90,8 @@ class SiegeScopeTests(unittest.TestCase):
         self.assertTrue(26 <= statistics.median(even) <= 40, statistics.median(even))
         self.assertLess(max(even), 75)
         self.assertEqual(stalled, 0)
-        # The starter roster outclasses this opponent by about 7 OVR: a stomp must end sooner.
-        base = match()
-        stomp, stalled = self.lengths(*base.s["teams"], base.champions)
+        # A roster about 8 OVR stronger must end the game sooner.
+        stomp, stalled = self.lengths(self.roster_near(g, 78), self.roster_near(g, 70), g.champions)
         self.assertLess(statistics.median(stomp), statistics.median(even)-3)
         # A strong awakening on the weaker side can stretch a single seed; the bound leaves room for it.
         self.assertLess(max(stomp), 50)
